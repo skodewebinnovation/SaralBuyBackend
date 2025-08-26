@@ -1,5 +1,6 @@
 import express from "express"
 import categoryRouter from "./category.route.js"
+import productRouter from "./product.route.js"
 const router = express.Router();
 
 
@@ -8,7 +9,8 @@ router.get('/',(_,res)=>{
 })
 
 const routes =[
-    {path:"/category",router:categoryRouter}
+    {path:"/category",router:categoryRouter},
+    {path:"/product",router:productRouter}
 ]
 
 

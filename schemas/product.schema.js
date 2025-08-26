@@ -1,0 +1,21 @@
+import mongoose from "mongoose";
+
+const productSchema = new mongoose.Schema({
+    title: { type: String, required: true },
+    quantity: { type: Number, required: true },
+    minimumBudget: { type: Number },
+    productType: { type: String },
+    image: { type: String },      // store image URL or path
+    document: { type: String },   // store doc/pdf path
+    description: { type: String, required: true },
+    paymentAndDelivery: {
+        pickDate: { type: Date },
+        paymentMode: { type: String },
+        gstNumber: { type: String },
+        organizationName: { type: String },
+        organizationAddress: { type: String }
+    },
+    draft: { type: Boolean, default: false }
+}, { timestamps: true });
+
+export default mongoose.model("Product", productSchema);
