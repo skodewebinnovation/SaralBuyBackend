@@ -93,6 +93,54 @@ export const getProducts = async (req, res) => {
 };
 
 
+export const searchProductsController = async (req, res) => {
+  try {
+    const { title, page = 1, limit = 10, skip } = req.query;
+
+    if (!title || typeof title !== "string" || title.trim().length < 2) {
+      return ApiResponse.errorResponse(res, 400, "Valid product title is required (min 2 characters)");
+    }
+
+    const limitValue = Math.max(parseInt(limit, 10), 1);
+    const pageValue = Math.max(parseInt(page, 10), 1);
+    const skipValue = skip ? parseInt(skip, 10) : (pageValue - 1) * limitValue;
+
+    const words = title.trim().split(/\s+/);
+
+    const strongFilter = {
+      $and: words.map((word) => ({
+        title: { $regex: `\\b${word}\\b`, $options: "i" },
+      })),
+    };
+
+    const weakFilter = {
+      $or: words.map((word) => ({
+        title: { $regex: word, $options: "i" },
+      })),
+    };
+
+    let products = await productSchema.find(strongFilter).skip(skipValue).limit(limitValue);
+    let total = await productSchema.countDocuments(strongFilter);
+
+    if (products.length === 0) {
+      products = await productSchema.find(weakFilter).skip(skipValue).limit(limitValue);
+      total = await productSchema.countDocuments(weakFilter);
+    }
+
+    return ApiResponse.successResponse(res, 200, "Products fetched successfully", {
+      total,
+      totalPages: Math.ceil(total / limitValue),
+      page: pageValue,
+      limit: limitValue,
+      skip: skipValue,
+      products,
+    });
+  } catch (error) {
+    console.error("Error in searchProductsController:", error);
+    return ApiResponse.errorResponse(res, 500, "Internal server error");
+  }
+};
+
 export const updateProduct = async (req, res) => {
     try {
         const { productId } = req.params;
