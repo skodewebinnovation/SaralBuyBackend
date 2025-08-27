@@ -61,7 +61,11 @@ export const addProduct = async (req, res) => {
 
 export const getProducts = async (req, res) => {
     try {
-        const { categoryId, subCategoryId } = req.query;
+        const {categoryId, subCategoryId} = req.params
+        const {  skip = 0, limit = 10 } = req.query; // frontend sends skip
+        const skipValue = parseInt(skip, 10);
+        const limitValue = parseInt(limit, 10);
+
         let filter = {};
 
         if (subCategoryId) {
@@ -77,13 +81,17 @@ export const getProducts = async (req, res) => {
             const productIds = category.subCategories.reduce((acc, sub) => acc.concat(sub.products), []);
             filter._id = { $in: productIds };
         }
+   
+        const total = await productSchema.countDocuments(filter);
+        // Apply skip & limit for pagination
+        const products = await productSchema.find(filter).skip(skipValue).limit(limitValue);
 
-        const products = await Product.find(filter);
-        return ApiResponse.successResponse(res, 200, "Products fetched successfully", products);
+        return ApiResponse.successResponse(res, 200, "Products fetched successfully", { total, products });
     } catch (error) {
         return ApiResponse.errorResponse(res, 500, error.message);
     }
 };
+
 
 export const updateProduct = async (req, res) => {
     try {

@@ -5,7 +5,7 @@ import uploadSingleImage from '../middleware/uploadMiddleware.js';
 const router = express.Router();
 
 router.post('/add-product/:categoryId/:subCategoryId',uploadSingleImage, addProduct);
-router.get('/get-products', getProducts);
+router.get('/get-products/:categoryId/:subCategoryId', getProducts);
 router.put('/update-product/:productId', updateProduct);
 router.delete('/delete-product/:productId', deleteProduct);
 
