@@ -5,12 +5,12 @@ import upload from '../middleware/multer.js';
 
 const router = express.Router();
 
-router.post('/register', userController.registerUser);
-router.post('/login', userController.loginUser);
+router.post('/send-otp', userController.sendOtp);
+router.post('/verify-otp',userController.verifyOtp)
 router.post('/logout', auth, userController.logoutUser);
 
 router.get('/profile', auth, userController.getProfile);
-router.put('/profile', auth, userController.updateProfile);
+// router.put('/profile', auth, userController.updateProfile);  
 
 router.post('/address', auth, userController.addAddress);
 

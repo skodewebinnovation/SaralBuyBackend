@@ -1,7 +1,7 @@
 import mongoose from "mongoose";
 import categorySchema from "../schemas/category.schema.js";
 import productSchema from "../schemas/product.schema.js";
-import {ApiResponse} from "../helper/ApiReponse.js"
+import { ApiResponse } from "../helper/ApiReponse.js"
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
@@ -61,8 +61,8 @@ export const addProduct = async (req, res) => {
 
 export const getProducts = async (req, res) => {
     try {
-        const {categoryId, subCategoryId} = req.params
-        const {  skip = 0, limit = 10 } = req.query; // frontend sends skip
+        const { categoryId, subCategoryId } = req.params
+        const { skip = 0, limit = 10 } = req.query; // frontend sends skip
         const skipValue = parseInt(skip, 10);
         const limitValue = parseInt(limit, 10);
 
@@ -81,7 +81,7 @@ export const getProducts = async (req, res) => {
             const productIds = category.subCategories.reduce((acc, sub) => acc.concat(sub.products), []);
             filter._id = { $in: productIds };
         }
-   
+
         const total = await productSchema.countDocuments(filter);
         // Apply skip & limit for pagination
         const products = await productSchema.find(filter).skip(skipValue).limit(limitValue);
@@ -180,4 +180,22 @@ export const deleteProduct = async (req, res) => {
     } catch (error) {
         return ApiResponse.errorResponse(res, 500, error.message);
     }
+};
+
+export const getProductByName = async (req, res) => {
+  try {
+    const { productName } = req.params;
+        if (!productName) return ApiResponse.successResponse(res, 200,'empty query',[]);
+    const products = await productSchema.find({
+      title: { $regex: productName, $options: "i"},  
+    },{
+        title:1,
+        image:1,
+        description:1
+      }).lean();
+    return ApiResponse.successResponse(res, 200,'products found',products);
+  } catch (error) {
+    console.error(error);
+    return ApiResponse.errorResponse(res, 400, error.message,null);
+  }
 };

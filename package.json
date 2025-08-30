@@ -15,6 +15,7 @@
   "dependencies": {
     "bcryptjs": "^3.0.2",
     "cloudinary": "^1.41.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.1",
     "env": "^0.0.2",
@@ -24,6 +25,7 @@
     "multer": "^2.0.2",
     "multer-storage-cloudinary": "^4.0.0",
     "nodemon": "^3.1.10",
+    "twilio": "^5.8.2",
     "winston": "^3.17.0"
   }
 }

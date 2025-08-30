@@ -1,32 +1,135 @@
 import User from '../schemas/user.schema.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
+import { ApiResponse } from '../helper/ApiReponse.js';
+import userSchema from '../schemas/user.schema.js';
+import twilio from 'twilio'
+const client = twilio(
+  process.env.TWILIO_ACCOUNT_SID,
+  process.env.TWILIO_AUTH_TOKEN
+);
+const serviceSid = process.env.TWILIO_ACCOUNT_SID; 
 
-// Register a new user
-export const registerUser = async (req, res) => {
+const otpStore = new Map(); 
+export const sendOtp = async (req, res) => {
+  let { pNo } = req.body;
   try {
-    const { firstName, lastName, email, phone, password } = req.body;
-    if (!firstName || !lastName || !email || !phone || !password) {
-      return res.status(400).json({ message: 'All fields are required' });
-    }
-    const existingUser = await User.findOne({ $or: [{ email }, { phone }] });
-    if (existingUser) {
-      return res.status(409).json({ message: 'User already exists' });
-    }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({
-      firstName,
-      lastName,
-      email,
-      phone,
-      password: hashedPassword
-    });
-    await user.save();
-    res.status(201).json({ message: 'User registered successfully' });
+    pNo = pNo.startsWith('+') ? pNo : `+91${pNo}`;
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minutes expiry
+
+    // Save in Map
+    otpStore.set(pNo, { otp, expiresAt });
+
+    // For testing (later integrate SMS API)
+    console.log(`OTP for ${pNo}: ${otp}`);
+
+    return ApiResponse.successResponse(res, 200, "Otp sent successfully");
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.error("OTP error:", err);
+    return ApiResponse.errorResponse(res, 400, err?.message || err);
   }
 };
+
+export const verifyOtp = async (req, res) => {
+  let { pNo, otp } = req.body;
+
+  try {
+    pNo = pNo.startsWith('+') ? pNo : `+91${pNo}`;
+
+    const otpData = otpStore.get(pNo);
+    if (!otpData) {
+      return ApiResponse.errorResponse(res, 400, "No OTP found for this number");
+    }
+
+    // Check expiry
+    if (otpData.expiresAt < Date.now()) {
+      otpStore.delete(pNo);
+      return ApiResponse.errorResponse(res, 400, "OTP expired");
+    }
+
+    // Check OTP
+    if (otpData.otp !== otp) {
+      return ApiResponse.errorResponse(res, 400, "Invalid OTP");
+    }
+
+    // ✅ OTP verified
+    otpStore.delete(pNo); // cleanup after success
+
+    let user = await userSchema.findOne({ phone: pNo });
+    if (!user) {
+      user = await userSchema.create({ phone: pNo });
+    }
+
+    const payload = { _id: user._id, phone: user.phone };
+     const token = jwt.sign(payload,process.env.JWT_SECRET,{expiresIn:'7d'})
+    console.log({token})
+   res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000, 
+      path: '/',
+    });
+
+    return ApiResponse.successResponse(res, 200, "Otp verified successfully");
+  } catch (err) {
+    console.error("Verify error:", err);
+    return ApiResponse.errorResponse(res, 400, err?.message || err);
+  }
+};
+
+
+// export const sendOtp = async (req, res) => {
+//   let { pNo } = req.body;
+//   console.log(req.body)
+//   try {
+//     pNo = pNo.startsWith('+') ? pNo : `+91${pNo}`;
+
+//     await client.verify.v2
+//       .services(serviceSid)
+//       .verifications.create({ to: pNo, channel: 'sms' });
+
+//     return ApiResponse.successResponse(res, 200, 'Otp sent successfully');
+//   } catch (err) {
+//     console.error('Twilio error:', err);
+//     return ApiResponse.errorResponse(res, 400, err?.message || err);
+//   }
+// };
+
+// export const verifyOtp = async (req, res) => {
+//   let { pNo, otp } = req.body;
+
+//   try {
+
+//     pNo = pNo.startsWith('+') ? pNo : `+91${pNo}`;
+
+//     const verificationCheck = await client.verify.v2
+//       .services(serviceSid)
+//       .verificationChecks.create({ to: pNo, code: otp });
+
+//     if (verificationCheck.status !== 'approved') {
+//       return ApiResponse.errorResponse(res, 400, 'Invalid OTP');
+//     }
+
+//     // ✅ OTP is correct — find user
+//     const last10Digits = pNo.replace(/\D/g, '').slice(-10);
+//     const userProfile = await userSchema.findOne({
+//       phone: { $regex: `${last10Digits}$` },
+//     });
+
+//     if (!userProfile) {
+//       return ApiResponse.errorResponse(res, 400, 'User not found');
+//     }
+
+//     return ApiResponse.successResponse(res, 200, 'Otp verified successfully');
+//   } catch (err) {
+//     console.error('Verify error:', err);
+//     return ApiResponse.errorResponse(res, 400, err?.message || err);
+//   }
+// };
 
 // Login user
 export const loginUser = async (req, res) => {
@@ -58,11 +161,12 @@ export const logoutUser = (req, res) => {
 // Get user profile
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.user.userId).select('-password');
+    const user = await userSchema.findById(req.user._id).select('-password');
     if (!user) return res.status(404).json({ message: 'User not found' });
     res.status(200).json(user);
   } catch (err) {
-    res.status(500).json({ message: err.message });
+    console.log(err)
+    res.status(400).json({ message: err.message });
   }
 };
 

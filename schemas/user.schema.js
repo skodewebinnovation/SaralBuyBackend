@@ -1,19 +1,19 @@
 import mongoose from 'mongoose';
 
 const addressSchema = new mongoose.Schema({
-  addressLine: { type: String, required: true },
-  city:        { type: String, required: true },
-  state:       { type: String, required: true },
-  pincode:     { type: String, required: true },
-  country:     { type: String, required: true }
+  addressLine: { type: String, },
+  city:        { type: String, },
+  state:       { type: String, },
+  pincode:     { type: String, },
+  country:     { type: String, }
 }, { _id: false });
 
 const userSchema = new mongoose.Schema({
-  firstName:      { type: String, required: true },
-  lastName:       { type: String, required: true },
-  email:          { type: String, required: true, unique: true },
+  firstName:      { type: String, },
+  lastName:       { type: String, },
+  email:          { type: String},
   phone:          { type: String, required: true, unique: true },
-  password:       { type: String, required: true },
+  password:       { type: String },
   addresses:      { type: [addressSchema], default: [] },
   aadhaarNumber:  { type: String },
   aadhaarImage:   { type: String }, // file path or URL
