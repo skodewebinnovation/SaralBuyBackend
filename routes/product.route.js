@@ -7,7 +7,7 @@ const router = express.Router();
 router.post('/add-product/:categoryId/:subCategoryId',uploadSingleImage, addProduct);
 router.get('/get-products/:categoryId/:subCategoryId', getProducts);
 router.get('/get-products-by-title/search', searchProductsController);
-router.put('/update-product/:productId', updateProduct);
+router.put('/update-product/:productId', uploadSingleImage, updateProduct);
 router.delete('/delete-product/:productId', deleteProduct);
 router.get('/get-product/:productName',getProductByName)
 export default router;

@@ -146,7 +146,13 @@ export const updateProduct = async (req, res) => {
         const { productId } = req.params;
         if (!isValidObjectId(productId)) return ApiResponse.errorResponse(res, 400, "Invalid product ID");
 
-        const updatedProduct = await productSchema.findByIdAndUpdate(productId, req.body, { new: true });
+        // Prepare update data
+        const updateData = { ...req.body };
+        if (req.file && req.file.path) {
+            updateData.image = req.file.path;
+        }
+
+        const updatedProduct = await productSchema.findByIdAndUpdate(productId, updateData, { new: true });
         if (!updatedProduct) return ApiResponse.errorResponse(res, 404, "Product not found");
 
         return ApiResponse.successResponse(res, 200, "Product updated successfully", updatedProduct);
