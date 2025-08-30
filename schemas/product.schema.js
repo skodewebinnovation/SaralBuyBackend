@@ -9,7 +9,7 @@ const productSchema = new mongoose.Schema({
     document: { type: String },   // store doc/pdf path
     description: { type: String, required: true },
     paymentAndDelivery: {
-        pickDate: { type: Date },
+        ex_deliveryDate: { type: Date },
         paymentMode: { type: String },
         gstNumber: { type: String },
         organizationName: { type: String },

@@ -10,7 +10,7 @@ router.post('/verify-otp',userController.verifyOtp)
 router.post('/logout', auth, userController.logoutUser);
 
 router.get('/profile', auth, userController.getProfile);
-// router.put('/profile', auth, userController.updateProfile);  
+router.put('/update-profile', auth, userController.updateProfile);  
 
 router.post('/address', auth, userController.addAddress);
 

@@ -74,7 +74,10 @@ export const verifyOtp = async (req, res) => {
       path: '/',
     });
 
-    return ApiResponse.successResponse(res, 200, "Otp verified successfully");
+    return ApiResponse.successResponse(res, 200, "Otp verified successfully", {
+      token,
+      user: { _id: user._id, phone: user.phone }
+    });
   } catch (err) {
     console.error("Verify error:", err);
     return ApiResponse.errorResponse(res, 400, err?.message || err);
@@ -174,6 +177,9 @@ export const getProfile = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { firstName, lastName, email, phone } = req.body;
+    // Debug log to check req.user and userId
+    console.log('updateProfile req.user:', req.user);
+    console.log('updateProfile req.user.userId:', req.user?.userId);
     // Only allow these fields to be updated
     const updates = {};
     if (firstName) updates.firstName = firstName;

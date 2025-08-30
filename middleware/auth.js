@@ -10,8 +10,12 @@ const auth = (req, res, next) => {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    console.log(decoded)
-    req.user = decoded;
+    console.log('auth middleware decoded:', decoded);
+    req.user = {
+      ...decoded,
+      userId: decoded.userId || decoded._id
+    };
+    console.log('auth middleware req.user:', req.user);
     next();
   } catch (err) {
     ApiResponse.errorResponse(res, 401, 'Invalid token');

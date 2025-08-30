@@ -205,3 +205,21 @@ export const getProductByName = async (req, res) => {
     return ApiResponse.errorResponse(res, 400, error.message,null);
   }
 };
+
+// Get product by ID
+export const getProductById = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    if (!isValidObjectId(productId)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid product ID");
+    }
+    const product = await productSchema.findById(productId);
+    if (!product) {
+      return ApiResponse.errorResponse(res, 404, "Product not found");
+    }
+    return ApiResponse.successResponse(res, 200, "Product found", product);
+  } catch (error) {
+    console.error(error);
+    return ApiResponse.errorResponse(res, 500, error.message);
+  }
+};
