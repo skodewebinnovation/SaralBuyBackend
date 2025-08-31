@@ -90,18 +90,28 @@ const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 export const addProduct = async (req, res) => {
   const { categoryId, subCategoryId } = req.params;
-  const userId = req.user?.userId; // from auth middleware
+  const userId = req.user?.userId;
 
   try {
-    // files directly from multer-storage-cloudinary
-    const imageUrl = req.files?.image?.[0]?.path || null;
-    const documentUrl = req.files?.document?.[0]?.path || null;
+    // Validate IDs
+    if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid or missing categoryId");
+    }
+    if (!subCategoryId || !mongoose.Types.ObjectId.isValid(subCategoryId)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid or missing subCategoryId");
+    }
+    if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid or missing userId");
+    }
 
-    // Extract data from body
+    const imageFile = req.files?.image?.[0];
+    const documentFile = req.files?.document?.[0];
+    const imageUrl = imageFile?.path || imageFile?.url || null;
+    const documentUrl = documentFile?.path || documentFile?.url || null;
+
     const {
       title,
       quantity,
-      category_type,  // ✅ corrected spelling
       minimumBudget,
       productType,
       oldProductValue,
@@ -112,22 +122,21 @@ export const addProduct = async (req, res) => {
       paymentAndDelivery,
     } = req.body;
 
-    // Debug log
-    console.log("body:", req.body);
-    console.log("files:",imageUrl,"434",documentUrl);
+    if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
+      return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget, and description are required");
+    }
 
-    // Build product object
+    // 1️⃣ Save new product
     const newProduct = new productSchema({
       title,
       quantity,
-      categoryTypeId: category_type,
       minimumBudget,
       productType,
       description,
       draft: draft || false,
-      categoryId,
-      subCategoryId,
-      userId,
+      categoryId: new mongoose.Types.ObjectId(categoryId),
+      subCategoryId: new mongoose.Types.ObjectId(subCategoryId),
+      userId: new mongoose.Types.ObjectId(userId),
       image: imageUrl,
       document: documentUrl,
       paymentAndDelivery: {
@@ -144,7 +153,6 @@ export const addProduct = async (req, res) => {
       },
     });
 
-    // If product is old_product, set oldProduct fields
     if (productType === "old_product") {
       newProduct.oldProductValue = {
         min: oldProductValue?.min,
@@ -153,13 +161,23 @@ export const addProduct = async (req, res) => {
       newProduct.productCondition = productCondition;
     }
 
-    // Save product
     const savedProduct = await newProduct.save();
+
+    // 2️⃣ Push product into category.subCategories[].products
+    const updatedCategory = await categorySchema.findOneAndUpdate(
+      { _id: categoryId, "subCategories._id": subCategoryId },
+      { $push: { "subCategories.$.products": savedProduct._id } },
+      { new: true }
+    );
+
+    if (!updatedCategory) {
+      return ApiResponse.errorResponse(res, 404, "Category or SubCategory not found");
+    }
 
     return ApiResponse.successResponse(
       res,
       201,
-      "Product created successfully",
+      "Product created successfully and added to subCategory",
       savedProduct
     );
   } catch (err) {
@@ -171,6 +189,7 @@ export const addProduct = async (req, res) => {
     );
   }
 };
+
 
 
 export const getProducts = async (req, res) => {

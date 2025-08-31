@@ -12,12 +12,14 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Configure Cloudinary storage
 const storage = new CloudinaryStorage({
   cloudinary: cloudinary,
   params: {
-    folder: "saralbuy", // folder in Cloudinary
-    allowed_formats: ["jpg", "jpeg", "png", "webp"],
+    folder: "saralbuy",
+    allowed_formats: [
+      "jpg", "jpeg", "png", "webp",
+      "pdf", "doc", "docx", "xls", "xlsx", "txt"
+    ],
     transformation: [{ width: 800, height: 800, crop: "limit" }],
     resource_type: "auto"
   }

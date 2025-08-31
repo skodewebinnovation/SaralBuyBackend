@@ -38,7 +38,6 @@ import mongoose from "mongoose";
 const productSchema = new mongoose.Schema({
   title: { type: String, required: true },
   quantity: { type: Number, required: true },
-  categoryTypeId: { type: String, required: true },
   minimumBudget: { type: Number, required: true },
   productType: { type: String, enum: ["new_product", "old_product"], required: true },
   description: { type: String },
