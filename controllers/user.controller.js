@@ -176,26 +176,28 @@ export const getProfile = async (req, res) => {
 // Edit user profile (firstName, lastName, email, phone)
 export const updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName, email, phone } = req.body;
-    // Debug log to check req.user and userId
-    console.log('updateProfile req.user:', req.user);
-    console.log('updateProfile req.user.userId:', req.user?.userId);
-    // Only allow these fields to be updated
+    const { firstName, lastName, email, phone,aadhaarNumber ,address} = req.body;
+    console.log(req.body)
+
+    const documentFile = req.files?.document?.[0];
+    const documentUrl = documentFile?.path || null;  
+    // Prevent duplicate email or phone
+    if (email) {
+      const existingEmail = await userSchema.findOne({ email, _id: { $ne: req.user.userId } });
+      if (existingEmail) return res.status(409).json({ message: 'Email already in use' });
+    }
+    if (phone) {
+      const existingPhone = await userSchema.findOne({ phone, _id: { $ne: req.user.userId } });
+      if (existingPhone) return res.status(409).json({ message: 'Phone already in use' });
+    }
     const updates = {};
     if (firstName) updates.firstName = firstName;
     if (lastName) updates.lastName = lastName;
     if (email) updates.email = email;
-    if (phone) updates.phone = phone;
-
-    // Prevent duplicate email or phone
-    if (email) {
-      const existingEmail = await User.findOne({ email, _id: { $ne: req.user.userId } });
-      if (existingEmail) return res.status(409).json({ message: 'Email already in use' });
-    }
-    if (phone) {
-      const existingPhone = await User.findOne({ phone, _id: { $ne: req.user.userId } });
-      if (existingPhone) return res.status(409).json({ message: 'Phone already in use' });
-    }
+    if (phone) updates.phone = phone.startsWith('+') ? phone : `+91${phone}`;;
+    if(documentUrl) updates.aadhaarImage = documentUrl;
+    if(address) updates.address = address;
+    if(aadhaarNumber) updates.aadhaarNumber=aadhaarNumber
 
     const user = await User.findByIdAndUpdate(req.user.userId, updates, { new: true }).select('-password');
     res.status(200).json(user);

@@ -3,6 +3,7 @@ import categorySchema from "../schemas/category.schema.js";
 import productSchema from "../schemas/product.schema.js";
 import { ApiResponse } from "../helper/ApiReponse.js"
 import { v2 as cloudinary } from "cloudinary";
+import userSchema from "../schemas/user.schema.js";
 
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
@@ -125,7 +126,6 @@ export const addProduct = async (req, res) => {
     if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
       return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget, and description are required");
     }
-
     // 1️⃣ Save new product
     const newProduct = new productSchema({
       title,
@@ -151,6 +151,7 @@ export const addProduct = async (req, res) => {
             ? paymentAndDelivery?.organizationAddress
             : "",
       },
+      createdBy:userId
     });
 
     if (productType === "old_product") {

@@ -59,6 +59,7 @@ const productSchema = new mongoose.Schema({
     organizationName: { type: String, default: "" },
     organizationAddress: { type: String, default: "" },
   },
+  createdAt: { type: Date, default: Date.now },
 });
 
 productSchema.index({ title: 1 });
