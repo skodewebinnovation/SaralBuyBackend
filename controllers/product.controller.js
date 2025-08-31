@@ -2,67 +2,181 @@ import mongoose from "mongoose";
 import categorySchema from "../schemas/category.schema.js";
 import productSchema from "../schemas/product.schema.js";
 import { ApiResponse } from "../helper/ApiReponse.js"
+import { v2 as cloudinary } from "cloudinary";
+
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+// export const addProduct = async (req, res) => {
+//   console.log(req.body)
+//     try {
+//         const { categoryId, subCategoryId } = req.params;
+//         const {
+//             title,
+//             quantity,
+//             minimumBudget,
+//             productType,
+//             description,
+//             paymentAndDelivery,
+//             draft,
+//             category,             // new
+//             price,                // new
+//             tags,     
+//             category_type,            // new
+//             productCondition,     // new
+//             gst_requirement,      // new
+//             oldProductValue,      // new
+//             organizationName,
+//             organizationAddress
+//         } = req.body;
+
+//         // ✅ Validate IDs
+//         if (!isValidObjectId(categoryId) || !isValidObjectId(subCategoryId)) {
+//             return ApiResponse.errorResponse(res, 400, "Invalid category or subcategory ID");
+//         }
+
+//         // ✅ Validate required product fields
+//         if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
+//             return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget and description are required");
+//         }
+
+//         // ✅ Find category and subcategory
+//         const categoryDoc = await categorySchema.findById(categoryId);
+//         if (!categoryDoc) return ApiResponse.errorResponse(res, 404, "Category not found");
+
+//         const subCategory = categoryDoc.subCategories.id(subCategoryId);
+//         if (!subCategory) return ApiResponse.errorResponse(res, 404, "Subcategory not found");
+
+//         // ✅ Build product object
+//         const productData = {
+//             title,
+//             quantity: Number(quantity),
+//             minimumBudget: Number(minimumBudget),
+//             productType,
+//             description,
+//             image: req.file?.path || null,
+//             document: req.body.document || null,
+//             paymentAndDelivery: {
+//                 ex_deliveryDate: paymentAndDelivery?.ex_deliveryDate || null,
+//                 paymentMode: paymentAndDelivery?.paymentMode || "",
+//                 gstNumber: paymentAndDelivery?.gstNumber || "",
+//                 organizationName: organizationName || "",
+//                 organizationAddress: organizationAddress || ""
+//             },
+//             draft: draft || false,
+
+//             // new fields
+//             categoryId: category_type, 
+//             productCondition: productCondition || "",
+//             gst_requirement: gst_requirement || "",
+//             oldProductValue: oldProductValue || {},
+//             userId: req.user?._id || null // if you have authentication
+//         };
+
+//         // ✅ Create product
+//         const product = await productSchema.create(productData);
+
+//         // ✅ Add product reference to subcategory
+//         subCategory.products.push(product._id);
+//         await categoryDoc.save();
+
+//         return ApiResponse.successResponse(res, 201, "Product added successfully", product);
+//     } catch (error) {
+//         console.error(error);
+//         return ApiResponse.errorResponse(res, 500, error?.message || "Server error");
+//     }
+// };
+
+
 export const addProduct = async (req, res) => {
-    try {
-        const { categoryId, subCategoryId } = req.params;
-        const {
-            title,
-            quantity,
-            minimumBudget,
-            productType,
-            description,
-            paymentAndDelivery,
-            draft
-        } = req.body;
+  const { categoryId, subCategoryId } = req.params;
+  const userId = req.user?.userId; // from auth middleware
 
-        // Validate IDs
-        if (!isValidObjectId(categoryId) || !isValidObjectId(subCategoryId)) {
-            return ApiResponse.errorResponse(res, 400, "Invalid category or subcategory ID");
-        }
+  try {
+    // files directly from multer-storage-cloudinary
+    const imageUrl = req.files?.image?.[0]?.path || null;
+    const documentUrl = req.files?.document?.[0]?.path || null;
 
-        // Validate required product fields
-        if (!title?.trim() || !quantity || !minimumBudget) {
-            return ApiResponse.errorResponse(res, 400, "Title, quantity, and minimum budget are required");
-        }
+    // Extract data from body
+    const {
+      title,
+      quantity,
+      category_type,  // ✅ corrected spelling
+      minimumBudget,
+      productType,
+      oldProductValue,
+      productCondition,
+      description,
+      draft,
+      gst_requirement,
+      paymentAndDelivery,
+    } = req.body;
 
-        // Find category and subcategory
-        const category = await categorySchema.findById(categoryId);
-        if (!category) return ApiResponse.errorResponse(res, 404, "Category not found");
+    // Debug log
+    console.log("body:", req.body);
+    console.log("files:",imageUrl,"434",documentUrl);
 
-        const subCategory = category.subCategories.id(subCategoryId);
-        if (!subCategory) return ApiResponse.errorResponse(res, 404, "Subcategory not found");
+    // Build product object
+    const newProduct = new productSchema({
+      title,
+      quantity,
+      categoryTypeId: category_type,
+      minimumBudget,
+      productType,
+      description,
+      draft: draft || false,
+      categoryId,
+      subCategoryId,
+      userId,
+      image: imageUrl,
+      document: documentUrl,
+      paymentAndDelivery: {
+        ex_deliveryDate: paymentAndDelivery?.ex_deliveryDate || null,
+        paymentMode: paymentAndDelivery?.paymentMode || null,
+        gstNumber:
+          gst_requirement === "yes" ? paymentAndDelivery?.gstNumber : null,
+        organizationName:
+          gst_requirement === "yes" ? paymentAndDelivery?.organizationName : "",
+        organizationAddress:
+          gst_requirement === "yes"
+            ? paymentAndDelivery?.organizationAddress
+            : "",
+      },
+    });
 
-        // Create product
-        const product = await productSchema.create({
-            title,
-            quantity,
-            minimumBudget,
-            productType,
-            image: req.file?.path, // uploaded image via middleware
-            document: req.body.document || null, // optional, can later handle document upload similarly
-            description,
-            paymentAndDelivery,
-            draft: draft || false
-        });
-
-        // Add product reference to subcategory
-        subCategory.products.push(product._id);
-        await category.save();
-
-        return ApiResponse.successResponse(res, 201, "Product added successfully", product);
-    } catch (error) {
-        console.error(error);
-        return ApiResponse.errorResponse(res, 500, error?.message || "Server error");
+    // If product is old_product, set oldProduct fields
+    if (productType === "old_product") {
+      newProduct.oldProductValue = {
+        min: oldProductValue?.min,
+        max: oldProductValue?.max,
+      };
+      newProduct.productCondition = productCondition;
     }
+
+    // Save product
+    const savedProduct = await newProduct.save();
+
+    return ApiResponse.successResponse(
+      res,
+      201,
+      "Product created successfully",
+      savedProduct
+    );
+  } catch (err) {
+    console.error(err);
+    return ApiResponse.errorResponse(
+      res,
+      400,
+      err.message || "Something went wrong while creating product"
+    );
+  }
 };
+
 
 export const getProducts = async (req, res) => {
     try {
         const { categoryId, subCategoryId } = req.params
-        const { skip = 0, limit = 10 } = req.query; // frontend sends skip
+        const { skip = 0, limit = 10 } = req.query; 
         const skipValue = parseInt(skip, 10);
         const limitValue = parseInt(limit, 10);
 

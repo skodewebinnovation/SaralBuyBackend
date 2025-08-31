@@ -89,7 +89,23 @@ const UpdateCategory = async (req, res) => {
     }
 };
 
+
+const GetCategoriesById = async(req,res)=>{
+    const {categoryId}  = req.params;
+    try {
+        if(!isValidObjectId(categoryId)) return ApiResponse.errorResponse(res, 400, "Invalid category ID");
+        const category = await categorySchema.findById(categoryId)
+        if (!category) return ApiResponse.errorResponse(res, 404, "Category not found");
+        return ApiResponse.successResponse(res, 200, "Category fetched successfully", category);
+    }
+    catch(err){
+        console.log(err)
+        return ApiResponse.errorResponse(res, 400, err.message);
+    }
+}
+
 export{
+    GetCategoriesById,
     CreateCategories,
     GetCategories,
     UpdateCategory
