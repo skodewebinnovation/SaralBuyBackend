@@ -44,7 +44,7 @@ const productSchema = new mongoose.Schema({
   draft: { type: Boolean, default: false },
   categoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
   subCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User",required:true },
   image: { type: String, default: null },     // ✅ optional
   document: { type: String, default: null },  // ✅ optional
   oldProductValue: {
