@@ -42,8 +42,8 @@ const productSchema = new mongoose.Schema({
   productType: { type: String, enum: ["new_product", "old_product"], required: true },
   description: { type: String },
   draft: { type: Boolean, default: false },
-  categoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
-  subCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" },
+  categoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: "Category",required:true },
+  subCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory", required:true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User",required:true },
   image: { type: String, default: null },     // ✅ optional
   document: { type: String, default: null },  // ✅ optional

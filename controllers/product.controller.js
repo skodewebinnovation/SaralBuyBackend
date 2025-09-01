@@ -8,87 +8,6 @@ import userSchema from "../schemas/user.schema.js";
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
-// export const addProduct = async (req, res) => {
-//   console.log(req.body)
-//     try {
-//         const { categoryId, subCategoryId } = req.params;
-//         const {
-//             title,
-//             quantity,
-//             minimumBudget,
-//             productType,
-//             description,
-//             paymentAndDelivery,
-//             draft,
-//             category,             // new
-//             price,                // new
-//             tags,     
-//             category_type,            // new
-//             productCondition,     // new
-//             gst_requirement,      // new
-//             oldProductValue,      // new
-//             organizationName,
-//             organizationAddress
-//         } = req.body;
-
-//         // ✅ Validate IDs
-//         if (!isValidObjectId(categoryId) || !isValidObjectId(subCategoryId)) {
-//             return ApiResponse.errorResponse(res, 400, "Invalid category or subcategory ID");
-//         }
-
-//         // ✅ Validate required product fields
-//         if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
-//             return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget and description are required");
-//         }
-
-//         // ✅ Find category and subcategory
-//         const categoryDoc = await categorySchema.findById(categoryId);
-//         if (!categoryDoc) return ApiResponse.errorResponse(res, 404, "Category not found");
-
-//         const subCategory = categoryDoc.subCategories.id(subCategoryId);
-//         if (!subCategory) return ApiResponse.errorResponse(res, 404, "Subcategory not found");
-
-//         // ✅ Build product object
-//         const productData = {
-//             title,
-//             quantity: Number(quantity),
-//             minimumBudget: Number(minimumBudget),
-//             productType,
-//             description,
-//             image: req.file?.path || null,
-//             document: req.body.document || null,
-//             paymentAndDelivery: {
-//                 ex_deliveryDate: paymentAndDelivery?.ex_deliveryDate || null,
-//                 paymentMode: paymentAndDelivery?.paymentMode || "",
-//                 gstNumber: paymentAndDelivery?.gstNumber || "",
-//                 organizationName: organizationName || "",
-//                 organizationAddress: organizationAddress || ""
-//             },
-//             draft: draft || false,
-
-//             // new fields
-//             categoryId: category_type, 
-//             productCondition: productCondition || "",
-//             gst_requirement: gst_requirement || "",
-//             oldProductValue: oldProductValue || {},
-//             userId: req.user?._id || null // if you have authentication
-//         };
-
-//         // ✅ Create product
-//         const product = await productSchema.create(productData);
-
-//         // ✅ Add product reference to subcategory
-//         subCategory.products.push(product._id);
-//         await categoryDoc.save();
-
-//         return ApiResponse.successResponse(res, 201, "Product added successfully", product);
-//     } catch (error) {
-//         console.error(error);
-//         return ApiResponse.errorResponse(res, 500, error?.message || "Server error");
-//     }
-// };
-
-
 export const addProduct = async (req, res) => {
   const { categoryId, subCategoryId } = req.params;
   const userId = req.user?.userId;
@@ -218,7 +137,7 @@ export const getProducts = async (req, res) => {
 
         const total = await productSchema.countDocuments(filter);
         // Apply skip & limit for pagination
-        const products = await productSchema.find(filter).skip(skipValue).limit(limitValue);
+        const products = await productSchema.find(filter).skip(skipValue).limit(limitValue)
 
         return ApiResponse.successResponse(res, 200, "Products fetched successfully", { total, products });
     } catch (error) {
@@ -253,7 +172,10 @@ export const searchProductsController = async (req, res) => {
       })),
     };
 
-    let products = await productSchema.find(strongFilter).skip(skipValue).limit(limitValue);
+    let products = await productSchema.find(strongFilter).skip(skipValue).limit(limitValue).populate({
+      path:'userId',
+      select:"firstName lastName address"
+    })
     let total = await productSchema.countDocuments(strongFilter);
 
     if (products.length === 0) {
@@ -332,7 +254,10 @@ export const getProductByName = async (req, res) => {
         title:1,
         image:1,
         description:1
-      }).lean();
+      }).populate({
+      path:'userId',
+      select:"firstName lastName address"
+    }).lean();
     return ApiResponse.successResponse(res, 200,'products found',products);
   } catch (error) {
     console.error(error);
