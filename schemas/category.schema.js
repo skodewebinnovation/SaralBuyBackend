@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 
 const subCategorySchema = new mongoose.Schema({
     name: { type: String, required: true },
-    products: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }] // array of product references
+    // products: [{ type: mongoose.Schema.Types.ObjectId, ref: "Product" }] // array of product references
 }, { _id: true });
 
 const categorySchema = new mongoose.Schema({
