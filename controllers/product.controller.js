@@ -11,7 +11,6 @@ const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 export const addProduct = async (req, res) => {
   const { categoryId, subCategoryId } = req.params;
   const userId = req.user?.userId;
-
   try {
     // Validate IDs
     if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) {
@@ -28,7 +27,7 @@ export const addProduct = async (req, res) => {
     const documentFile = req.files?.document?.[0];
     const imageUrl = imageFile?.path || imageFile?.url || null;
     const documentUrl = documentFile?.path || documentFile?.url || null;
-
+    const documentName = documentFile?.originalname || "";
     const {
       title,
       quantity,
@@ -41,6 +40,8 @@ export const addProduct = async (req, res) => {
       gst_requirement,
       paymentAndDelivery,
     } = req.body;
+
+    console.log(req.body)
 
     if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
       return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget, and description are required");
@@ -58,6 +59,7 @@ export const addProduct = async (req, res) => {
       userId: new mongoose.Types.ObjectId(userId),
       image: imageUrl,
       document: documentUrl,
+      documentName,
       paymentAndDelivery: {
         ex_deliveryDate: paymentAndDelivery?.ex_deliveryDate || null,
         paymentMode: paymentAndDelivery?.paymentMode || null,
@@ -84,15 +86,15 @@ export const addProduct = async (req, res) => {
     const savedProduct = await newProduct.save();
 
     // 2️⃣ Push product into category.subCategories[].products
-    const updatedCategory = await categorySchema.findOneAndUpdate(
-      { _id: categoryId, "subCategories._id": subCategoryId },
-      { $push: { "subCategories.$.products": savedProduct._id } },
-      { new: true }
-    );
+    // const updatedCategory = await categorySchema.findOneAndUpdate(
+    //   { _id: categoryId, "subCategories._id": subCategoryId },
+    //   { $push: { "subCategories.$.products": savedProduct._id } },
+    //   { new: true }
+    // );
 
-    if (!updatedCategory) {
-      return ApiResponse.errorResponse(res, 404, "Category or SubCategory not found");
-    }
+    // if (!updatedCategory) {
+    //   return ApiResponse.errorResponse(res, 404, "Category or SubCategory not found");
+    // }
 
     return ApiResponse.successResponse(
       res,
@@ -175,6 +177,9 @@ export const searchProductsController = async (req, res) => {
     let products = await productSchema.find(strongFilter).skip(skipValue).limit(limitValue).populate({
       path:'userId',
       select:"firstName lastName address"
+    }).populate({
+      path:'categoryId',
+      select:'categoryName'
     })
     let total = await productSchema.countDocuments(strongFilter);
 
@@ -257,6 +262,9 @@ export const getProductByName = async (req, res) => {
       }).populate({
       path:'userId',
       select:"firstName lastName address"
+    }).populate({
+      path:'categoryId',
+      select:'categoryName'
     }).lean();
     return ApiResponse.successResponse(res, 200,'products found',products);
   } catch (error) {
