@@ -28,7 +28,7 @@ export const addProduct = async (req, res) => {
     const imageUrl = imageFile?.path || imageFile?.url || null;
     const documentUrl = documentFile?.path || documentFile?.url || null;
     const documentName = documentFile?.originalname || "";
-    const {
+    let {
       title,
       quantity,
       minimumBudget,
@@ -41,7 +41,22 @@ export const addProduct = async (req, res) => {
       paymentAndDelivery,
     } = req.body;
 
-    console.log(req.body)
+    try {
+      if(typeof oldProductValue === "string"){
+        oldProductValue = JSON.parse(oldProductValue);
+      }
+    } catch (error) {
+      return ApiResponse.errorResponse(res, 400, "Invalid oldProductValue");
+    }
+     try {
+      if(typeof paymentAndDelivery === "string"){
+        paymentAndDelivery = JSON.parse(paymentAndDelivery);
+      }
+    } catch (error) {
+      return ApiResponse.errorResponse(res, 400, "Invalid paymentAndDelivery");
+    }
+   
+    console.log("------ NEW PRODUCT BODY ------", req.body);
 
     if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
       return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget, and description are required");
@@ -84,18 +99,6 @@ export const addProduct = async (req, res) => {
     }
 
     const savedProduct = await newProduct.save();
-
-    // 2️⃣ Push product into category.subCategories[].products
-    // const updatedCategory = await categorySchema.findOneAndUpdate(
-    //   { _id: categoryId, "subCategories._id": subCategoryId },
-    //   { $push: { "subCategories.$.products": savedProduct._id } },
-    //   { new: true }
-    // );
-
-    // if (!updatedCategory) {
-    //   return ApiResponse.errorResponse(res, 404, "Category or SubCategory not found");
-    // }
-
     return ApiResponse.successResponse(
       res,
       201,
@@ -280,7 +283,10 @@ export const getProductById = async (req, res) => {
     if (!isValidObjectId(productId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid product ID");
     }
-    const product = await productSchema.findById(productId);
+    const product = await productSchema.findById(productId).populate({
+      path:'userId',
+      select:"firstName lastName address"
+    });
     if (!product) {
       return ApiResponse.errorResponse(res, 404, "Product not found");
     }
