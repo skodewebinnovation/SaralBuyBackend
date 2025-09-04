@@ -42,20 +42,34 @@ const productSchema = new mongoose.Schema({
   productType: { type: String, enum: ["new_product", "old_product"], required: true },
   description: { type: String },
   draft: { type: Boolean, default: false },
-  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category",required:true },
-  subCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory", required:true },
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User",required:true },
+  categoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
+  subCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" },
+  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   image: { type: String, default: null },     // ✅ optional
   document: { type: String, default: null },  // ✅ optional
-  documentName:{
-    type:String,
-    default:''
-  },
+
+  // ✅ New fields added
+  color: { type: String },
+  selectCategory: { type: String }, 
+  brand: { type: String },
+  additionalDeliveryAndPackage: { type: String },
+  fuelType: { type: String},
+  model: { type: String },
+  transmission: { type: String},
+  productCategory: { type: String },  // To avoid conflict with productType (already exists)
+  gender: { type: String},
+  typeOfAccessories: { type: String },
+  constructionToolType: { type: String },
+  toolType: { type: String },
+  rateAService: { type: Number}, 
+
   oldProductValue: {
     min: Number,
     max: Number,
   },
+
   productCondition: String,
+
   paymentAndDelivery: {
     ex_deliveryDate: Date,
     paymentMode: String,
@@ -63,10 +77,8 @@ const productSchema = new mongoose.Schema({
     organizationName: { type: String, default: "" },
     organizationAddress: { type: String, default: "" },
   },
-  createdAt: { type: Date, default: Date.now },
 });
 
 productSchema.index({ title: 1 });
-
 
 export default mongoose.model("Product", productSchema);

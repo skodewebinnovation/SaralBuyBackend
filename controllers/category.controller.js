@@ -22,7 +22,7 @@ const CreateCategories = async (req, res) => {
 
     try {
         // Store only Cloudinary URL
-        const image = req.file?.path || null;
+        const image = req.file?.path || req.files?.image?.[0]?.path || null;
 
         const category = new categorySchema({
             categoryName,
@@ -79,7 +79,11 @@ const UpdateCategory = async (req, res) => {
         if (Array.isArray(subCategories) && subCategories.length) category.subCategories = subCategories;
 
         // Update image if uploaded
-        if (req.file?.path) category.image = req.file.path;
+        if (req.file?.path) {
+            category.image = req.file.path;
+        } else if (req.files?.image?.[0]?.path) {
+            category.image = req.files.image[0].path;
+        }
 
         await category.save();
         return ApiResponse.successResponse(res, 200, "Category updated successfully", category);

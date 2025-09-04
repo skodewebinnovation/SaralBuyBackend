@@ -8,11 +8,13 @@ import userSchema from "../schemas/user.schema.js";
 
 const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
+
 export const addProduct = async (req, res) => {
   const { categoryId, subCategoryId } = req.params;
   const userId = req.user?.userId;
+
   try {
-    // Validate IDs
+    // ✅ Validate IDs
     if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid or missing categoryId");
     }
@@ -27,8 +29,8 @@ export const addProduct = async (req, res) => {
     const documentFile = req.files?.document?.[0];
     const imageUrl = imageFile?.path || imageFile?.url || null;
     const documentUrl = documentFile?.path || documentFile?.url || null;
-    const documentName = documentFile?.originalname || "";
-    let {
+
+    const {
       title,
       quantity,
       minimumBudget,
@@ -39,66 +41,92 @@ export const addProduct = async (req, res) => {
       draft,
       gst_requirement,
       paymentAndDelivery,
+
+      // ✅ New fields
+      color,
+      selectCategory,
+      brand,
+      additionalDeliveryAndPackage,
+      fuelType,
+      model,
+      transmission,
+      productCategory,
+      gender,
+      typeOfAccessories,
+      constructionToolType,
+      toolType,
+      rateAService,
     } = req.body;
 
-    try {
-      if(typeof oldProductValue === "string"){
-        oldProductValue = JSON.parse(oldProductValue);
-      }
-    } catch (error) {
-      return ApiResponse.errorResponse(res, 400, "Invalid oldProductValue");
-    }
-     try {
-      if(typeof paymentAndDelivery === "string"){
-        paymentAndDelivery = JSON.parse(paymentAndDelivery);
-      }
-    } catch (error) {
-      return ApiResponse.errorResponse(res, 400, "Invalid paymentAndDelivery");
-    }
-   
-    console.log("------ NEW PRODUCT BODY ------", req.body);
-
+    // ✅ Required field validation
     if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
       return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget, and description are required");
     }
-    // 1️⃣ Save new product
-    const newProduct = new productSchema({
-      title,
+
+    // ✅ Build product object dynamically (only store non-empty values)
+    const productData = {
+      title: title?.trim(),
       quantity,
       minimumBudget,
       productType,
-      description,
+      description: description?.trim(),
       draft: draft || false,
-      categoryId: new mongoose.Types.ObjectId(categoryId),
+      categoryTypeId: new mongoose.Types.ObjectId(categoryId),
       subCategoryId: new mongoose.Types.ObjectId(subCategoryId),
       userId: new mongoose.Types.ObjectId(userId),
-      image: imageUrl,
-      document: documentUrl,
-      documentName,
-      paymentAndDelivery: {
-        ex_deliveryDate: paymentAndDelivery?.ex_deliveryDate || null,
-        paymentMode: paymentAndDelivery?.paymentMode || null,
-        gstNumber:
-          gst_requirement === "yes" ? paymentAndDelivery?.gstNumber : null,
-        organizationName:
-          gst_requirement === "yes" ? paymentAndDelivery?.organizationName : "",
-        organizationAddress:
-          gst_requirement === "yes"
-            ? paymentAndDelivery?.organizationAddress
-            : "",
-      },
-      createdBy:userId
-    });
+      ...(imageUrl && { image: imageUrl }),
+      ...(documentUrl && { document: documentUrl }),
+      ...(color && { color }),
+      ...(selectCategory && { selectCategory }),
+      ...(brand && { brand }),
+      ...(additionalDeliveryAndPackage && { additionalDeliveryAndPackage }),
+      ...(fuelType && { fuelType }),
+      ...(model && { model }),
+      ...(transmission && { transmission }),
+      ...(productCategory && { productCategory }),
+      ...(gender && { gender }),
+      ...(typeOfAccessories && { typeOfAccessories }),
+      ...(constructionToolType && { constructionToolType }),
+      ...(toolType && { toolType }),
+      ...(rateAService && { rateAService }),
 
+      paymentAndDelivery: {
+        ...(paymentAndDelivery?.ex_deliveryDate && { ex_deliveryDate: paymentAndDelivery.ex_deliveryDate }),
+        ...(paymentAndDelivery?.paymentMode && { paymentMode: paymentAndDelivery.paymentMode }),
+        ...(gst_requirement === "yes" && paymentAndDelivery?.gstNumber && { gstNumber: paymentAndDelivery.gstNumber }),
+        ...(gst_requirement === "yes" && paymentAndDelivery?.organizationName && { organizationName: paymentAndDelivery.organizationName }),
+        ...(gst_requirement === "yes" && paymentAndDelivery?.organizationAddress && { organizationAddress: paymentAndDelivery.organizationAddress }),
+      },
+    };
+
+    // ✅ Add old product values only if productType is old
     if (productType === "old_product") {
-      newProduct.oldProductValue = {
-        min: oldProductValue?.min,
-        max: oldProductValue?.max,
-      };
-      newProduct.productCondition = productCondition;
+      if (oldProductValue?.min || oldProductValue?.max) {
+        productData.oldProductValue = {
+          ...(oldProductValue?.min && { min: oldProductValue.min }),
+          ...(oldProductValue?.max && { max: oldProductValue.max }),
+        };
+      }
+      if (productCondition) {
+        productData.productCondition = productCondition;
+      }
     }
 
+    // ✅ Save product
+    const newProduct = new productSchema(productData);
     const savedProduct = await newProduct.save();
+
+    // ✅ Push product into category.subCategories[].products
+    const updatedCategory = await categorySchema.findOneAndUpdate(
+      { _id: categoryId, "subCategories._id": subCategoryId },
+      { $push: { "subCategories.$.products": savedProduct._id } },
+      { new: true }
+    );
+
+    if (!updatedCategory) {
+      return ApiResponse.errorResponse(res, 404, "Category or SubCategory not found");
+    }
+
     return ApiResponse.successResponse(
       res,
       201,
@@ -206,23 +234,99 @@ export const searchProductsController = async (req, res) => {
 };
 
 export const updateProduct = async (req, res) => {
-    try {
-        const { productId } = req.params;
-        if (!isValidObjectId(productId)) return ApiResponse.errorResponse(res, 400, "Invalid product ID");
-
-        // Prepare update data
-        const updateData = { ...req.body };
-        if (req.file && req.file.path) {
-            updateData.image = req.file.path;
-        }
-
-        const updatedProduct = await productSchema.findByIdAndUpdate(productId, updateData, { new: true });
-        if (!updatedProduct) return ApiResponse.errorResponse(res, 404, "Product not found");
-
-        return ApiResponse.successResponse(res, 200, "Product updated successfully", updatedProduct);
-    } catch (error) {
-        return ApiResponse.errorResponse(res, 500, error.message);
+  try {
+    const { productId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid product ID");
     }
+
+    const imageFile = req.files?.image?.[0];
+    const documentFile = req.files?.document?.[0];
+    const imageUrl = imageFile?.path || imageFile?.url || null;
+    const documentUrl = documentFile?.path || documentFile?.url || null;
+
+    const {
+      title,
+      quantity,
+      minimumBudget,
+      productType,
+      oldProductValue,
+      productCondition,
+      description,
+      draft,
+      gst_requirement,
+      paymentAndDelivery,
+      color,
+      selectCategory,
+      brand,
+      additionalDeliveryAndPackage,
+      fuelType,
+      model,
+      transmission,
+      productCategory,
+      gender,
+      typeOfAccessories,
+      constructionToolType,
+      toolType,
+      rateAService,
+    } = req.body;
+
+    const updateData = {
+      ...(title?.trim() && { title: title.trim() }),
+      ...(quantity && { quantity }),
+      ...(minimumBudget && { minimumBudget }),
+      ...(productType && { productType }),
+      ...(description?.trim() && { description: description.trim() }),
+      ...(draft !== undefined && { draft }),
+      ...(imageUrl && { image: imageUrl }),
+      ...(documentUrl && { document: documentUrl }),
+      ...(color && { color }),
+      ...(selectCategory && { selectCategory }),
+      ...(brand && { brand }),
+      ...(additionalDeliveryAndPackage && { additionalDeliveryAndPackage }),
+      ...(fuelType && { fuelType }),
+      ...(model && { model }),
+      ...(transmission && { transmission }),
+      ...(productCategory && { productCategory }),
+      ...(gender && { gender }),
+      ...(typeOfAccessories && { typeOfAccessories }),
+      ...(constructionToolType && { constructionToolType }),
+      ...(toolType && { toolType }),
+      ...(rateAService && { rateAService }),
+    };
+
+    if (productType === "old_product") {
+      if (oldProductValue?.min || oldProductValue?.max) {
+        updateData.oldProductValue = {
+          ...(oldProductValue?.min && { min: oldProductValue.min }),
+          ...(oldProductValue?.max && { max: oldProductValue.max }),
+        };
+      }
+      if (productCondition) {
+        updateData.productCondition = productCondition;
+      }
+    }
+
+    if (paymentAndDelivery || gst_requirement === "yes") {
+      updateData.paymentAndDelivery = {
+        ...(paymentAndDelivery?.ex_deliveryDate && { ex_deliveryDate: paymentAndDelivery.ex_deliveryDate }),
+        ...(paymentAndDelivery?.paymentMode && { paymentMode: paymentAndDelivery.paymentMode }),
+        ...(gst_requirement === "yes" && paymentAndDelivery?.gstNumber && { gstNumber: paymentAndDelivery.gstNumber }),
+        ...(gst_requirement === "yes" && paymentAndDelivery?.organizationName && { organizationName: paymentAndDelivery.organizationName }),
+        ...(gst_requirement === "yes" && paymentAndDelivery?.organizationAddress && { organizationAddress: paymentAndDelivery.organizationAddress }),
+      };
+    }
+
+    const updatedProduct = await productSchema.findByIdAndUpdate(productId, updateData, { new: true });
+    if (!updatedProduct) {
+      return ApiResponse.errorResponse(res, 404, "Product not found");
+    }
+
+    return ApiResponse.successResponse(res, 200, "Product updated successfully", updatedProduct);
+  } catch (error) {
+    console.error(error);
+    return ApiResponse.errorResponse(res, 500, error.message || "Something went wrong while updating product");
+  }
 };
 
 export const deleteProduct = async (req, res) => {
