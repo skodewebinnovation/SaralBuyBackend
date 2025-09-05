@@ -4,9 +4,9 @@ import productSchema from "../schemas/product.schema.js";
 import { ApiResponse } from "../helper/ApiReponse.js"
 import { v2 as cloudinary } from "cloudinary";
 import userSchema from "../schemas/user.schema.js";
+import {isValidObjectId}  from "../helper/isValidId.js"
 
 
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
 
 
 export const addProduct = async (req, res) => {

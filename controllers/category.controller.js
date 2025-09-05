@@ -1,8 +1,7 @@
 import categorySchema from "../schemas/category.schema.js"
 import { ApiResponse } from "../helper/ApiReponse.js"
 import mongoose from "mongoose";
-
-const isValidObjectId = (id) => mongoose.Types.ObjectId.isValid(id);
+import {isValidObjectId}  from "../helper/isValidId.js"
 
 const CreateCategories = async (req, res) => {
     let { categoryName, subCategories, title, description } = req.body || {};

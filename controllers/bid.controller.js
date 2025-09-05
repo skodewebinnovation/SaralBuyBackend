@@ -1,18 +1,22 @@
 import Bid from "../schemas/bid.schema.js";
 import mongoose from "mongoose";
 import { ApiResponse } from "../helper/ApiReponse.js"
-
+import {isValidObjectId}  from "../helper/isValidId.js"
 // Create a new bid
 export const addBid = async (req, res) => {
   try {
-    const { budget, status, availableBrand, earliestDeliveryBy } = req.body;
+    const { budgetQuation, status, availableBrand, earliestDeliveryDate } = req.body;
     const { sellerId, productId } = req.params;
     const buyerId = req.user.userId;
-    if (!budget) {
+    
+    if(!isValidObjectId(sellerId) || !isValidObjectId(productId)){
+      return ApiResponse.errorResponse(res, 400, "Invalid sellerId or productId");
+    }
+    if (!budgetQuation) {
       return ApiResponse.errorResponse(
         res,
         400,
-        "Budget is required"
+        "budgetQuation is required"
       );
     }
 
@@ -20,10 +24,10 @@ export const addBid = async (req, res) => {
       sellerId,
       buyerId,
       productId,
-      budget,
+      budgetQuation,
       status: status || "active",
       availableBrand,
-      earliestDeliveryBy
+      earliestDeliveryDate
     });
     return ApiResponse.successResponse(
       res,
@@ -68,7 +72,7 @@ export const getAllBids = async (req, res) => {
       {
         $project: {
           _id: 1,
-          budget: 1,
+          budgetQuation: 1,
           status: 1,
           createdAt: 1,
           updatedAt: 1,
