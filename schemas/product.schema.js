@@ -39,11 +39,11 @@ const productSchema = new mongoose.Schema({
   title: { type: String, required: true },
   quantity: { type: Number, required: true },
   minimumBudget: { type: Number, required: true },
-  productType: { type: String, enum: ["new_product", "old_product"], required: true },
+  productType: { type: String,}, // ["new_product", "old_product"]
   description: { type: String },
   draft: { type: Boolean, default: false },
-  categoryTypeId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
-  subCategoryId: { type: mongoose.Schema.Types.ObjectId, ref: "SubCategory" },
+  categoryId: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
+  subCategoryId: { type: mongoose.Schema.Types.ObjectId}, // this is subcategoryId from category schema
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   image: { type: String, default: null },     // ✅ optional
   document: { type: String, default: null },  // ✅ optional
@@ -62,6 +62,7 @@ const productSchema = new mongoose.Schema({
   constructionToolType: { type: String },
   toolType: { type: String },
   rateAService: { type: Number}, 
+  conditionOfProduct:String, // this is for only furniture 
 
   oldProductValue: {
     min: Number,
@@ -73,7 +74,7 @@ const productSchema = new mongoose.Schema({
   paymentAndDelivery: {
     ex_deliveryDate: Date,
     paymentMode: String,
-    gstNumber: { type: String, default: null },
+    gstNumber: { type: String, default: "" },
     organizationName: { type: String, default: "" },
     organizationAddress: { type: String, default: "" },
   },

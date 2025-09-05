@@ -30,7 +30,7 @@ export const addProduct = async (req, res) => {
     const imageUrl = imageFile?.path || imageFile?.url || null;
     const documentUrl = documentFile?.path || documentFile?.url || null;
 
-    const {
+    let {
       title,
       quantity,
       minimumBudget,
@@ -62,6 +62,26 @@ export const addProduct = async (req, res) => {
     if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
       return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget, and description are required");
     }
+    if(oldProductValue){
+      try {
+        if(typeof oldProductValue === "string"){
+          oldProductValue = JSON.parse(oldProductValue)
+        }
+      } catch (error) {
+        return ApiResponse.errorResponse(res, 400, "Invalid old product value");
+        
+      }
+    }
+    if(paymentAndDelivery){
+      try {
+        if(typeof paymentAndDelivery === "string"){
+          paymentAndDelivery = JSON.parse(paymentAndDelivery)
+        }
+      } catch (error) {
+        return ApiResponse.errorResponse(res, 400, "Invalid payment and delivery");
+
+      }
+    }
 
     // ✅ Build product object dynamically (only store non-empty values)
     const productData = {
@@ -71,7 +91,7 @@ export const addProduct = async (req, res) => {
       productType,
       description: description?.trim(),
       draft: draft || false,
-      categoryTypeId: new mongoose.Types.ObjectId(categoryId),
+      categoryId: new mongoose.Types.ObjectId(categoryId),
       subCategoryId: new mongoose.Types.ObjectId(subCategoryId),
       userId: new mongoose.Types.ObjectId(userId),
       ...(imageUrl && { image: imageUrl }),
@@ -99,7 +119,6 @@ export const addProduct = async (req, res) => {
       },
     };
 
-    // ✅ Add old product values only if productType is old
     if (productType === "old_product") {
       if (oldProductValue?.min || oldProductValue?.max) {
         productData.oldProductValue = {
@@ -387,13 +406,25 @@ export const getProductById = async (req, res) => {
     if (!isValidObjectId(productId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid product ID");
     }
-    const product = await productSchema.findById(productId).populate({
+    let product = await productSchema.findById(productId).populate({
       path:'userId',
       select:"firstName lastName address"
-    });
+    }).populate({
+      path:'categoryId',
+      select:'categoryName subCategories'
+    })
+
     if (!product) {
       return ApiResponse.errorResponse(res, 404, "Product not found");
     }
+     const populatedSubCategory = product.categoryId.subCategories.find(
+      sub => sub._id.toString() === product.subCategoryId.toString()
+    );
+
+    product = product.toObject(); 
+    product.subCategoryId = populatedSubCategory || product.subCategoryId;
+    
+   
     return ApiResponse.successResponse(res, 200, "Product found", product);
   } catch (error) {
     console.error(error);
