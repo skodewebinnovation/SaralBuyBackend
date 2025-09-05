@@ -78,6 +78,8 @@ const productSchema = new mongoose.Schema({
     organizationName: { type: String, default: "" },
     organizationAddress: { type: String, default: "" },
   },
+},{
+  timestamps:true
 });
 
 productSchema.index({ title: 1 });
