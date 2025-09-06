@@ -5,7 +5,7 @@ import {isValidObjectId}  from "../helper/isValidId.js"
 // Create a new bid
 export const addBid = async (req, res) => {
   try {
-    const { budgetQuation, status, availableBrand, earliestDeliveryDate } = req.body;
+    const { budgetQuation, status, availableBrand, earliestDeliveryDate,businessType } = req.body;
     const { sellerId, productId } = req.params;
     const buyerId = req.user.userId;
     
@@ -27,7 +27,8 @@ export const addBid = async (req, res) => {
       budgetQuation,
       status: status || "active",
       availableBrand,
-      earliestDeliveryDate
+      earliestDeliveryDate,
+      businessType
     });
     return ApiResponse.successResponse(
       res,
@@ -50,25 +51,41 @@ export const getAllBids = async (req, res) => {
     const buyerId = req.user.userId;
 
     const bids = await Bid.aggregate([
-      { $match: { buyerId: new mongoose.Types.ObjectId(buyerId) } },
+      {
+        $match: {
+          buyerId: new mongoose.Types.ObjectId(buyerId),
+        },
+      },
       {
         $lookup: {
           from: "products",
           localField: "productId",
           foreignField: "_id",
-          as: "product"
-        }
+          as: "product",
+        },
       },
       { $unwind: "$product" },
+
       {
         $lookup: {
           from: "users",
           localField: "sellerId",
           foreignField: "_id",
-          as: "seller"
-        }
+          as: "seller",
+        },
       },
       { $unwind: "$seller" },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "buyerId",
+          foreignField: "_id",
+          as: "buyer",
+        },
+      },
+      { $unwind: "$buyer" },
+
       {
         $project: {
           _id: 1,
@@ -77,14 +94,28 @@ export const getAllBids = async (req, res) => {
           createdAt: 1,
           updatedAt: 1,
           product: 1,
-          seller: { _id: 1, firstName: 1, lastName: 1, email: 1, phone: 1 }
-        }
-      }
-    ]);
+          seller: {
+            _id: 1,
+            firstName: 1,
+            lastName: 1,
+            email: 1,
+            phone: 1,
+          },
+          buyer: {
+            _id: 1,
+            firstName: 1,
+            lastName: 1,
+            email: 1,
+            phone: 1,
+          },
+        },
+      },
+    ])
+
     return ApiResponse.successResponse(
       res,
       200,
-      "All bid fetched successfully",
+      "All bids fetched successfully",
       bids
     );
   } catch (err) {
@@ -95,6 +126,7 @@ export const getAllBids = async (req, res) => {
     );
   }
 };
+
 
 // Delete a bid (only if the logged-in user is the buyer)
 export const deleteBid = async (req, res) => {

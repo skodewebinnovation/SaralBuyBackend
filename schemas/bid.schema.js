@@ -8,7 +8,8 @@ const bidSchema = new mongoose.Schema(
     budgetQuation: { type: Number, required: true },
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     availableBrand: { type: String },
-    earliestDeliveryDate: { type: Date }
+    earliestDeliveryDate: { type: Date },
+    businessType:{type:String,enum:['individual','business']}
   },
   { timestamps: true }
 );
