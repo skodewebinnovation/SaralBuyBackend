@@ -25,13 +25,7 @@ const storage = new CloudinaryStorage({
   }
 });
 
-// Single image upload middleware with 3MB limit
-// const uploadSingleImage = multer({
-//   storage,
-//   limits: { fileSize: 3 * 1024 * 1024 }, // 3MB
-// }).single("image"); // "image" is already set
-
-const uploadSingleImage = multer({
+const uploader = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
 }).fields([
@@ -39,4 +33,20 @@ const uploadSingleImage = multer({
   { name: "document", maxCount: 1 },
 ]);
 
+const uploadSingleImage = (req, res, next) => {
+  uploader(req, res, (err) => {
+    if (err instanceof multer.MulterError) {
+      return res.status(400).json({
+        success: false,
+        message: `Multer error: ${err.message}`,
+      });
+    } else if (err) {
+      return res.status(500).json({
+        success: false,
+        message: `Upload failed: ${err.message || "Unknown error"}`,
+      });
+    }
+    next();
+  });
+};
 export default uploadSingleImage;

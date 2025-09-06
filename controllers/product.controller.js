@@ -12,7 +12,6 @@ import {isValidObjectId}  from "../helper/isValidId.js"
 export const addProduct = async (req, res) => {
   const { categoryId, subCategoryId } = req.params;
   const userId = req.user?.userId;
-
   try {
     // ✅ Validate IDs
     if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) {
@@ -68,7 +67,7 @@ export const addProduct = async (req, res) => {
           oldProductValue = JSON.parse(oldProductValue)
         }
       } catch (error) {
-        return ApiResponse.errorResponse(res, 400, "Invalid old product value");
+        oldProductValue = oldProductValue
         
       }
     }
@@ -78,7 +77,7 @@ export const addProduct = async (req, res) => {
           paymentAndDelivery = JSON.parse(paymentAndDelivery)
         }
       } catch (error) {
-        return ApiResponse.errorResponse(res, 400, "Invalid payment and delivery");
+       paymentAndDelivery = paymentAndDelivery
 
       }
     }

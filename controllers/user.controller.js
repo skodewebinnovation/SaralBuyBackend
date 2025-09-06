@@ -65,8 +65,7 @@ export const verifyOtp = async (req, res) => {
 
     const payload = { _id: user._id, phone: user.phone };
      const token = jwt.sign(payload,process.env.JWT_SECRET,{expiresIn:'7d'})
-    console.log({token})
-   res.cookie('authToken', token, {
+    res.cookie('authToken', token, {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
