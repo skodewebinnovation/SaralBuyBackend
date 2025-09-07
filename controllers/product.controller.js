@@ -57,6 +57,13 @@ export const addProduct = async (req, res) => {
       rateAService,
     } = req.body;
 
+    if (Array.isArray(draft)) {
+      draft = draft[draft.length - 1];
+    }
+    if (typeof draft === "string") {
+      draft = draft.toLowerCase() === "true";
+    }
+
     console.log('---------- NEW PRODUCT BODY',req.body)
     // ✅ Required field validation
     if (!title?.trim() || !quantity || !description?.trim()) {
@@ -90,7 +97,7 @@ export const addProduct = async (req, res) => {
       minimumBudget,
       productType,
       description: description?.trim(),
-      draft: draft || false,
+      draft: draft ?? false,
       categoryId: new mongoose.Types.ObjectId(categoryId),
       subCategoryId: new mongoose.Types.ObjectId(subCategoryId),
       userId: new mongoose.Types.ObjectId(userId),
@@ -171,7 +178,7 @@ export const getProducts = async (req, res) => {
         const skipValue = parseInt(skip, 10);
         const limitValue = parseInt(limit, 10);
 
-        let filter = {};
+        let filter = {draft: false};
 
         if (subCategoryId) {
             const category = await categorySchema.findOne({ "subCategories._id": subCategoryId });
@@ -431,3 +438,22 @@ export const getProductById = async (req, res) => {
     return ApiResponse.errorResponse(res, 500, error.message);
   }
 };
+
+export const getDraftProducts = async (req, res) => {
+  try {
+      const userId = req.user._id;
+      const { skip = 0, limit = 10 } = req.query;
+      const skipValue = parseInt(skip, 10);
+      const limitValue = parseInt(limit, 10);
+
+      let filter = { draft: true, userId };
+
+      const total = await productSchema.countDocuments(filter);
+      const products = await productSchema.find(filter).skip(skipValue).limit(limitValue);
+
+      return ApiResponse.successResponse(res, 200, "Draft products fetched successfully", { total, products });
+  } catch (error) {
+      return ApiResponse.errorResponse(res, 500, error.message);
+  }
+};
+
