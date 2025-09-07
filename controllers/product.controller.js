@@ -57,8 +57,9 @@ export const addProduct = async (req, res) => {
       rateAService,
     } = req.body;
 
+    console.log('---------- NEW PRODUCT BODY',req.body)
     // ✅ Required field validation
-    if (!title?.trim() || !quantity || !minimumBudget || !description?.trim()) {
+    if (!title?.trim() || !quantity || !description?.trim()) {
       return ApiResponse.errorResponse(res, 400, "Title, quantity, minimum budget, and description are required");
     }
     if(oldProductValue){

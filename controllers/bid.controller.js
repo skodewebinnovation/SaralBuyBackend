@@ -1,15 +1,16 @@
 import Bid from "../schemas/bid.schema.js";
 import mongoose from "mongoose";
 import { ApiResponse } from "../helper/ApiReponse.js"
-import {isValidObjectId}  from "../helper/isValidId.js"
+import { isValidObjectId } from "../helper/isValidId.js"
+import bidSchema from "../schemas/bid.schema.js";
 // Create a new bid
 export const addBid = async (req, res) => {
   try {
-    const { budgetQuation, status, availableBrand, earliestDeliveryDate,businessType } = req.body;
+    const { budgetQuation, status, availableBrand, earliestDeliveryDate, businessType } = req.body;
     const { sellerId, productId } = req.params;
     const buyerId = req.user.userId;
-    
-    if(!isValidObjectId(sellerId) || !isValidObjectId(productId)){
+
+    if (!isValidObjectId(sellerId) || !isValidObjectId(productId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid sellerId or productId");
     }
     if (!budgetQuation) {
@@ -155,5 +156,112 @@ export const deleteBid = async (req, res) => {
       400,
       err.message || "Something went wrong while deleting bid"
     );
+  }
+};
+export const bidOverViewbyId = async (req, res) => {
+  const { _id } = req.params;
+
+  if (!isValidObjectId(_id)) {
+    return ApiResponse.errorResponse(res, 400, "Invalid bid or product id");
+  }
+
+  try {
+    const bid = await bidSchema.aggregate([
+      {
+        $match: {
+          _id: new mongoose.Types.ObjectId(_id)
+        }
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "productId",
+          foreignField: "_id",
+          as: "product"
+        }
+      },
+      { $unwind: "$product" },
+
+      {
+        $lookup: {
+          from: "categories",
+          let: { categoryId: "$product.categoryId" },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ["$_id", "$$categoryId"] }
+              }
+            }
+          ],
+          as: "productCategory"
+        }
+      },
+      { $unwind: { path: "$productCategory", preserveNullAndEmptyArrays: true } },
+
+      {
+        $addFields: {
+          "product.category": "$productCategory"
+        }
+      },
+      {
+        $project: {
+          productCategory: 0
+        }
+      },
+      {
+        $addFields: {
+          "product.subCategory": {
+            $arrayElemAt: [
+              {
+                $filter: {
+                  input: "$product.category.subCategories",
+                  as: "sub",
+                  cond: { $eq: ["$$sub._id", "$product.subCategoryId"] }
+                }
+              },
+              0
+            ]
+          }
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "buyerId",
+          foreignField: "_id",
+          as: "seller"
+        }
+      },
+      { $unwind: "$seller" },
+
+      {
+        $lookup: {
+          from: "users",
+          localField: "sellerId",
+          foreignField: "_id",
+          as: "buyer"
+        }
+      },
+      { $unwind: "$buyer" },
+
+      {
+        $project: {
+          productId: 0,
+          sellerId: 0,
+          buyerId: 0,
+          "product.categoryId": 0,
+          "product.subCategoryId": 0,
+        }
+      }
+    ]);
+
+    if (!bid.length) {
+      return ApiResponse.errorResponse(res, 404, "Bid not found");
+    }
+
+    return ApiResponse.successResponse(res, 200, "Bid overview", bid[0]);
+
+  } catch (err) {
+    return ApiResponse.errorResponse(res, 500, err.message || "Something went wrong while getting bid overview");
   }
 };
