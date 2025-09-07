@@ -8,5 +8,6 @@ const router = express.Router();
 router.post("/create/:sellerId/:productId", auth, bidController.addBid);
 router.get("/get-all-bid", auth, bidController.getAllBids);
 router.delete("/delete-bid/:id", auth, bidController.deleteBid);
-router.get('/bid-overview/:_id',auth,bidController.bidOverViewbyId)
+router.get('/bid-overview/:id',auth,bidController.bidOverViewbyId)
+router.put('/update-bid-user-dets/:id',auth,bidController.updateBidUserDetails)
 export default router;

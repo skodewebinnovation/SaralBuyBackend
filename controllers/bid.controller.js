@@ -159,9 +159,9 @@ export const deleteBid = async (req, res) => {
   }
 };
 export const bidOverViewbyId = async (req, res) => {
-  const { _id } = req.params;
+  const { id } = req.params;
 
-  if (!isValidObjectId(_id)) {
+  if (!isValidObjectId(id)) {
     return ApiResponse.errorResponse(res, 400, "Invalid bid or product id");
   }
 
@@ -169,7 +169,7 @@ export const bidOverViewbyId = async (req, res) => {
     const bid = await bidSchema.aggregate([
       {
         $match: {
-          _id: new mongoose.Types.ObjectId(_id)
+          _id: new mongoose.Types.ObjectId(id)
         }
       },
       {
@@ -265,3 +265,26 @@ export const bidOverViewbyId = async (req, res) => {
     return ApiResponse.errorResponse(res, 500, err.message || "Something went wrong while getting bid overview");
   }
 };
+
+
+export const updateBidUserDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const {
+      budgetQuation,
+      availableBrand,
+      earliestDeliveryDate
+    } = req.body;
+
+    const bid = await bidSchema.findByIdAndUpdate(id, { budgetQuation, availableBrand, earliestDeliveryDate }, { new: true });
+
+    if (!bid) {
+      return ApiResponse.errorResponse(res, 404, "Bid not found");
+    }
+
+    return ApiResponse.successResponse(res, 200, "Bid updated successfully", bid);
+
+  } catch (err) {
+    return ApiResponse.errorResponse(res, 500, err.message || "Something went wrong while updating bid");
+  }
+}
