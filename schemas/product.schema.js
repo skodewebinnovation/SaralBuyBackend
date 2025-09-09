@@ -1,8 +1,14 @@
 import mongoose from "mongoose";
 
 const productSchema = new mongoose.Schema({
-  title: { type: String, required: true },
-  quantity: { type: Number, required: true },
+  title: {
+    type: String,
+    required: function() { return this.draft === false; }
+  },
+  quantity: {
+    type: Number,
+    required: function() { return this.draft === false; }
+  },
   minimumBudget: { type: Number },
   productType: { type: String,}, // ["new_product", "old_product"]
   description: { type: String },

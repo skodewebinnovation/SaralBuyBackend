@@ -1,5 +1,5 @@
 import express from 'express';
-import { addProduct, getProducts, updateProduct, deleteProduct, searchProductsController, getProductByName, getProductById, getDraftProducts } from '../controllers/product.controller.js';
+import { addProduct, getProducts, updateProduct, deleteProduct, searchProductsController, getProductByName, getProductById, getDraftProducts, getMultiProduct, updateMultiProductDraftStatus } from '../controllers/product.controller.js';
 import uploadSingleImage from '../middleware/uploadMiddleware.js';
 import auth from '../middleware/auth.js';
 
@@ -13,4 +13,6 @@ router.delete('/delete-product/:productId', deleteProduct);
 router.get('/get-product/:productName', getProductByName);
 router.get('/get-product-by-id/:productId', getProductById);
 router.get('/get-draft-products', auth, getDraftProducts);
+router.get("/multi/:multiProductId", auth, getMultiProduct);
+router.patch("/multi/:multiProductId/draft", auth, updateMultiProductDraftStatus);
 export default router;
