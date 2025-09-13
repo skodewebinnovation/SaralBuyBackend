@@ -6,8 +6,7 @@ const productSchema = new mongoose.Schema({
     required: function() { return this.draft === false; }
   },
   quantity: {
-    type: Number,
-    required: function() { return this.draft === false; }
+    type: String
   },
   minimumBudget: { type: Number },
   productType: { type: String,}, // ["new_product", "old_product"]
@@ -32,7 +31,9 @@ const productSchema = new mongoose.Schema({
   typeOfAccessories: { type: String },
   // constructionToolType: { type: String },
   toolType: { type: String },
-  rateAService: { type: Number}, 
+  rateAService: {
+    type: String,
+  },
   conditionOfProduct:String, // this is for only furniture 
 
   oldProductValue: {

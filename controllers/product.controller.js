@@ -67,121 +67,70 @@ const processProductData = (productData, imageUrl, documentUrl, categoryId, subC
     userId: new mongoose.Types.ObjectId(userId),
   };
 
-  /*
-    For draft products, include only fields that are present in the request body,
-    even if their value is empty or blank. Do not add fields that are not present in the body.
-  */
-  if (draft) {
-    const allowedFields = [
-      "title", "quantity", "minimumBudget", "productType", "oldProductValue", "productCondition",
-      "description", "gst_requirement", "paymentAndDelivery", "color", "selectCategory", "brand",
-      "additionalDeliveryAndPackage", "fuelType", "model", "transmission", "productCategory",
-      "gender", "typeOfAccessories", "toolType", "rateAService", "conditionOfProduct"
-    ];
-  
-    for (const field of allowedFields) {
-      if (Object.prototype.hasOwnProperty.call(productData, field)) {
-        if (field === "title" || field === "description") {
-          processedData[field] = typeof productData[field] === "string" ? productData[field].trim() : productData[field];
-        } else {
-          processedData[field] = productData[field];
-        }
-      }
-    }
-  
-    // Handle file uploads for draft
-    if (imageUrl) {
-      processedData.image = imageUrl;
-    }
-    if (documentUrl) {
-      processedData.document = documentUrl;
-    }
-  
-    // Handle old product specific fields for draft
-    if (
-      productType === "old_product" &&
-      Object.prototype.hasOwnProperty.call(productData, "oldProductValue")
-    ) {
-      processedData.oldProductValue = {};
-      if (parsedOldProductValue && typeof parsedOldProductValue === "object") {
-        if (Object.prototype.hasOwnProperty.call(parsedOldProductValue, "min")) {
-          processedData.oldProductValue.min = parsedOldProductValue.min;
-        }
-        if (Object.prototype.hasOwnProperty.call(parsedOldProductValue, "max")) {
-          processedData.oldProductValue.max = parsedOldProductValue.max;
-        }
-      }
-      if (Object.prototype.hasOwnProperty.call(productData, "productCondition")) {
-        processedData.productCondition = productCondition;
-      }
-    }
-  
-    // Handle payment and delivery for draft
-    if (Object.prototype.hasOwnProperty.call(productData, "paymentAndDelivery") && parsedPaymentAndDelivery) {
-      processedData.paymentAndDelivery = {};
-      if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "ex_deliveryDate")) {
-        processedData.paymentAndDelivery.ex_deliveryDate = parsedPaymentAndDelivery.ex_deliveryDate;
-      }
-      if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "paymentMode")) {
-        processedData.paymentAndDelivery.paymentMode = parsedPaymentAndDelivery.paymentMode;
-      }
-      if (gst_requirement === "yes") {
-        if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "gstNumber")) {
-          processedData.paymentAndDelivery.gstNumber = parsedPaymentAndDelivery.gstNumber;
-        }
-        if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "organizationName")) {
-          processedData.paymentAndDelivery.organizationName = parsedPaymentAndDelivery.organizationName;
-        }
-        if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "organizationAddress")) {
-          processedData.paymentAndDelivery.organizationAddress = parsedPaymentAndDelivery.organizationAddress;
-        }
-      }
-    }
-  } else {
-    // For non-draft products, include all fields with defaults (existing behavior)
-    processedData.title = title?.trim() ?? "";
-    processedData.quantity = quantity ?? null;
-    processedData.minimumBudget = minimumBudget ?? null;
-    processedData.productType = productType ?? "";
-    processedData.description = description?.trim() ?? "";
-    processedData.image = imageUrl ?? null;
-    processedData.document = documentUrl ?? null;
-    processedData.color = color ?? "";
-    processedData.selectCategory = selectCategory ?? "";
-    processedData.brand = brand ?? "";
-    processedData.additionalDeliveryAndPackage = additionalDeliveryAndPackage ?? "";
-    processedData.fuelType = fuelType ?? "";
-    processedData.model = model ?? "";
-    processedData.transmission = transmission ?? "";
-    processedData.productCategory = productCategory ?? "";
-    processedData.gender = gender ?? "";
-    processedData.typeOfAccessories = typeOfAccessories ?? "";
-    processedData.toolType = toolType ?? "";
-    processedData.rateAService = rateAService ?? null;
-    processedData.conditionOfProduct = conditionOfProduct ?? "";
+  // Only include fields present in productData (req.body), for both draft and non-draft
+  const allowedFields = [
+    "title", "quantity", "minimumBudget", "productType", "oldProductValue", "productCondition",
+    "description", "gst_requirement", "paymentAndDelivery", "color", "selectCategory", "brand",
+    "additionalDeliveryAndPackage", "fuelType", "model", "transmission", "productCategory",
+    "gender", "typeOfAccessories", "toolType", "rateAService", "conditionOfProduct"
+  ];
 
-    // Handle old product specific fields for non-draft
-    if (productType === "old_product") {
-      if (parsedOldProductValue) {
-        processedData.oldProductValue = {
-          ...(parsedOldProductValue.min !== undefined && { min: parsedOldProductValue.min }),
-          ...(parsedOldProductValue.max !== undefined && { max: parsedOldProductValue.max }),
-        };
-      }
-      if (productCondition) {
-        processedData.productCondition = productCondition;
+  for (const field of allowedFields) {
+    if (Object.prototype.hasOwnProperty.call(productData, field)) {
+      if (field === "title" || field === "description") {
+        processedData[field] = typeof productData[field] === "string" ? productData[field].trim() : productData[field];
+      } else {
+        processedData[field] = productData[field];
       }
     }
+  }
 
-    // Handle payment and delivery for non-draft
-    if (parsedPaymentAndDelivery) {
-      processedData.paymentAndDelivery = {
-        ...(parsedPaymentAndDelivery.ex_deliveryDate && { ex_deliveryDate: parsedPaymentAndDelivery.ex_deliveryDate }),
-        ...(parsedPaymentAndDelivery.paymentMode && { paymentMode: parsedPaymentAndDelivery.paymentMode }),
-        ...(gst_requirement === "yes" && parsedPaymentAndDelivery.gstNumber && { gstNumber: parsedPaymentAndDelivery.gstNumber }),
-        ...(gst_requirement === "yes" && parsedPaymentAndDelivery.organizationName && { organizationName: parsedPaymentAndDelivery.organizationName }),
-        ...(gst_requirement === "yes" && parsedPaymentAndDelivery.organizationAddress && { organizationAddress: parsedPaymentAndDelivery.organizationAddress }),
-      };
+  // Handle file uploads
+  if (imageUrl) {
+    processedData.image = imageUrl;
+  }
+  if (documentUrl) {
+    processedData.document = documentUrl;
+  }
+
+  // Handle old product specific fields
+  if (
+    productData.productType === "old_product" &&
+    Object.prototype.hasOwnProperty.call(productData, "oldProductValue")
+  ) {
+    processedData.oldProductValue = {};
+    if (parsedOldProductValue && typeof parsedOldProductValue === "object") {
+      if (Object.prototype.hasOwnProperty.call(parsedOldProductValue, "min")) {
+        processedData.oldProductValue.min = parsedOldProductValue.min;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsedOldProductValue, "max")) {
+        processedData.oldProductValue.max = parsedOldProductValue.max;
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(productData, "productCondition")) {
+      processedData.productCondition = productData.productCondition;
+    }
+  }
+
+  // Handle payment and delivery
+  if (Object.prototype.hasOwnProperty.call(productData, "paymentAndDelivery") && parsedPaymentAndDelivery) {
+    processedData.paymentAndDelivery = {};
+    if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "ex_deliveryDate")) {
+      processedData.paymentAndDelivery.ex_deliveryDate = parsedPaymentAndDelivery.ex_deliveryDate;
+    }
+    if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "paymentMode")) {
+      processedData.paymentAndDelivery.paymentMode = parsedPaymentAndDelivery.paymentMode;
+    }
+    if (productData.gst_requirement === "yes") {
+      if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "gstNumber")) {
+        processedData.paymentAndDelivery.gstNumber = parsedPaymentAndDelivery.gstNumber;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "organizationName")) {
+        processedData.paymentAndDelivery.organizationName = parsedPaymentAndDelivery.organizationName;
+      }
+      if (Object.prototype.hasOwnProperty.call(parsedPaymentAndDelivery, "organizationAddress")) {
+        processedData.paymentAndDelivery.organizationAddress = parsedPaymentAndDelivery.organizationAddress;
+      }
     }
   }
 
@@ -206,6 +155,9 @@ const handleSingleProduct = async (req, res, { categoryId, subCategoryId, userId
       return ApiResponse.errorResponse(res, 400, "Title,  and description are required for non-draft products");
     }
   }
+
+  // Debug: log files for troubleshooting image upload
+  console.log("req.files:", req.files);
 
   // Get files
   const imageFile = req.files?.image?.[0];
@@ -331,6 +283,12 @@ const handleMultipleProducts = async (req, res, { categoryId, subCategoryId, use
         }
       }
       
+      // Debug: log files for troubleshooting image upload
+      console.log(`req.files for product ${i + 1}:`, {
+        image: imageFiles[i],
+        document: documentFiles[i]
+      });
+
       // Get files for this product
       const imageFile = imageFiles[i] || null;
       const documentFile = documentFiles[i] || null;
