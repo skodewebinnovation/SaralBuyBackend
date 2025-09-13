@@ -18,7 +18,7 @@ const storage = new CloudinaryStorage({
     folder: "saralbuy",
    allowed_formats: [
   "jpg", "jpeg", "png", "webp", "gif", "heic", "tiff", "bmp",
-  "pdf", "doc", "docx", "xls", "xlsx", "txt", "csv", "ppt", "pptx",
+  "pdf", "doc", "docx", "xls", "xlsx", "txt", "csv", "ppt", "pptx",'avif'
 ],
     transformation: [{ width: 800, height: 800, crop: "limit" }],
     resource_type: "auto"
