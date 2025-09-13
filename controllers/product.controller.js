@@ -405,10 +405,10 @@ const handleMultipleProducts = async (req, res, { categoryId, subCategoryId, use
 
 // Main add product function
 export const addProduct = async (req, res) => {
-  const { categoryId, subCategoryId } = req.params;
+  const { categoryId, subCategoryId,isMultiple } = req.params;
   const userId = req.user?.userId;
-  const { isMultiple } = req.body;
   
+  console.log(req.body,req.params,2234234)
   try {
     // ✅ Validate IDs
     if (!categoryId || !mongoose.Types.ObjectId.isValid(categoryId)) {
@@ -422,7 +422,8 @@ export const addProduct = async (req, res) => {
     }
 
     // Handle multiple products
-    if (isMultiple === "true") {
+    if (isMultiple == "true") {
+      console.log('shadbaaz chgutitya')
       return await handleMultipleProducts(req, res, {
         categoryId,
         subCategoryId,

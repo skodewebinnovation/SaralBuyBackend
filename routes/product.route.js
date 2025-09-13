@@ -5,7 +5,7 @@ import auth from '../middleware/auth.js';
 
 const router = express.Router();
 
-router.post('/add-product/:categoryId/:subCategoryId',auth,uploadSingleImage, addProduct);
+router.post('/add-product/:categoryId/:subCategoryId/:isMultiple',auth,uploadSingleImage, addProduct);
 router.get('/get-products/:categoryId/:subCategoryId', getProducts);
 router.get('/get-products-by-title/search', searchProductsController);
 router.put('/update-product/:productId', uploadSingleImage, updateProduct);
