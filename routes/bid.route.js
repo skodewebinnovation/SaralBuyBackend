@@ -10,4 +10,5 @@ router.get("/get-all-bid", auth, bidController.getAllBids);
 router.delete("/delete-bid/:id", auth, bidController.deleteBid);
 router.get('/bid-overview/:id',auth,bidController.bidOverViewbyId)
 router.put('/update-bid-user-dets/:id',auth,bidController.updateBidUserDetails)
+router.get('/get-three-latest-bid', auth, bidController.getLatestThreeBid) // fetching 3 bids only
 export default router;

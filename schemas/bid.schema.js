@@ -9,7 +9,8 @@ const bidSchema = new mongoose.Schema(
     status: { type: String, enum: ["active", "inactive"], default: "active" },
     availableBrand: { type: String },
     earliestDeliveryDate: { type: Date },
-    businessType:{type:String,enum:['individual','business']}
+    businessType:{type:String,enum:['individual','business']},
+    // bidCount:Number
   },
   { timestamps: true }
 );

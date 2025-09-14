@@ -288,3 +288,27 @@ export const updateBidUserDetails = async (req, res) => {
     return ApiResponse.errorResponse(res, 500, err.message || "Something went wrong while updating bid");
   }
 }
+
+export const getLatestThreeBid = async(req,res)=>{
+  try {
+    const user =req.user._id
+    if(!user){
+      return ApiResponse.errorResponse(res, 404, "User not found");
+    }
+    const bids = await bidSchema.find({sellerId:user}).sort({ createdAt: -1 }).limit(3).populate({
+      path:'productId',
+      populate:{
+        path:'categoryId'
+      }
+    }).lean()
+    if (!bids) {
+      return ApiResponse.errorResponse(res, 404, "Bid not found");
+    }
+    return ApiResponse.successResponse(res, 200, "Bid fetched successfully", bids);
+  } catch (error) {
+    console.log(error)
+    return ApiResponse.errorResponse(res, 400, "Something went wrong while getting bid overview");
+    
+  }
+
+}
