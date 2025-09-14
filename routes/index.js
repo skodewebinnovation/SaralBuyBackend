@@ -6,9 +6,7 @@ import bidRouter from "./bid.route.js"
 const router = express.Router();
 
 
-router.get('/',(_,res)=>{
-    res.send('#index.js working ')
-})
+
 
 const routes =[
     {path:"/category",router:categoryRouter},

@@ -25,6 +25,10 @@ app.use((req, res, next) => {
 });
 app.use('/api/v1',router)
 
+router.get('/',(_,res)=>{
+    res.send('#index.js working ')
+})
+
 // async function deleteAllProducts() {
 //   try {
 //       // Delete all products that match the structure (draft: true, etc.)
