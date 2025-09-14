@@ -26,7 +26,7 @@ export const sendOtp = async (req, res) => {
     // For testing (later integrate SMS API)
     console.log(`OTP for ${pNo}: ${otp}`);
 
-    return ApiResponse.successResponse(res, 200, "Otp sent successfully");
+    return ApiResponse.successResponse(res, 200, "Otp sent successfully",otp);
   } catch (err) {
     console.error("OTP error:", err);
     return ApiResponse.errorResponse(res, 400, err?.message || err);
