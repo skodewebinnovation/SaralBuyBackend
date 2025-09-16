@@ -10,10 +10,9 @@ import multiProductSchema from "../schemas/multiProduct.schema.js";
 
 
 const mergeDraftProducts = (allDrafts) => {
-  const productMap = new Map();
-
-  // Step 1: Collect all subproduct IDs from products that have subProducts
   const subProductIds = new Set();
+
+  // Collect all subproduct IDs
   allDrafts.forEach(product => {
     if (product.subProducts && product.subProducts.length > 0) {
       product.subProducts.forEach(sub => {
@@ -22,26 +21,37 @@ const mergeDraftProducts = (allDrafts) => {
     }
   });
 
-  // Step 2: Build final merged product list
+  // Final array after merging
   const merged = [];
 
   for (const product of allDrafts) {
     const productId = product._id.toString();
 
-    // If the product is a subproduct of another, skip it
-    if (subProductIds.has(productId) && !(product.subProducts?.length > 0)) {
-      continue;
-    }
+    // Exclude if this product is only a subproduct elsewhere
+    const isSubProductOnly = subProductIds.has(productId);
 
-    // Add product with its subProducts (or empty array)
-    merged.push({
-      ...product,
-      subProducts: product.subProducts || [],
-    });
+    // If this product has subProducts, ensure it's not adding itself
+    if (product.subProducts && product.subProducts.length > 0) {
+      const cleanSubProducts = product.subProducts.filter(
+        sub => sub._id.toString() !== productId
+      );
+
+      merged.push({
+        ...product,
+        subProducts: cleanSubProducts,
+      });
+    } else if (!isSubProductOnly) {
+      // Add standalone product
+      merged.push({
+        ...product,
+        subProducts: [],
+      });
+    }
   }
 
   return merged;
 };
+
 
 
 const processProductData = (productData, imageUrl, documentUrl, categoryId, subCategoryId, userId, draft) => {
