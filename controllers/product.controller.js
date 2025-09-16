@@ -12,7 +12,7 @@ import multiProductSchema from "../schemas/multiProduct.schema.js";
 const mergeDraftProducts = (allDrafts) => {
   const subProductIds = new Set();
 
-  // Collect all subproduct IDs
+  // Step 1: Collect all subproduct IDs
   allDrafts.forEach(product => {
     if (product.subProducts && product.subProducts.length > 0) {
       product.subProducts.forEach(sub => {
@@ -21,32 +21,31 @@ const mergeDraftProducts = (allDrafts) => {
     }
   });
 
-  // Final array after merging
   const merged = [];
 
   for (const product of allDrafts) {
     const productId = product._id.toString();
 
-    // Exclude if this product is only a subproduct elsewhere
-    const isSubProductOnly = subProductIds.has(productId);
+    // Step 2: Exclude if this product is only a subproduct elsewhere
+    const isSubProductOnly = subProductIds.has(productId) && (!product.subProducts || product.subProducts.length === 0);
+    if (isSubProductOnly) continue;
 
-    // If this product has subProducts, ensure it's not adding itself
-    if (product.subProducts && product.subProducts.length > 0) {
-      const cleanSubProducts = product.subProducts.filter(
-        sub => sub._id.toString() !== productId
-      );
+    // Step 3: Start with existing subProducts (if any)
+    const existingSubs = product.subProducts || [];
 
-      merged.push({
-        ...product,
-        subProducts: cleanSubProducts,
-      });
-    } else if (!isSubProductOnly) {
-      // Add standalone product
-      merged.push({
-        ...product,
-        subProducts: [],
-      });
-    }
+    // Step 4: Check if the product itself is already in subProducts
+    const isAlreadyIncluded = existingSubs.some(sub => sub._id.toString() === productId);
+
+    // Step 5: Add the product itself if not already included
+    const finalSubProducts = isAlreadyIncluded
+      ? existingSubs
+      : [...existingSubs, product];
+
+    // Step 6: Push the merged product
+    merged.push({
+      ...product,
+      subProducts: finalSubProducts,
+    });
   }
 
   return merged;
@@ -946,7 +945,7 @@ export const getAllDraftProducts = async (req, res) => {
       return ApiResponse.errorResponse(res, 400, "User not authenticated");
     }
 
-    // Fetch single draft products
+    // Fetch single draft products with subCategory populated
     const singleDrafts = await productSchema.aggregate([
       {
         $match: {
@@ -954,9 +953,20 @@ export const getAllDraftProducts = async (req, res) => {
           userId: new mongoose.Types.ObjectId(userId),
         },
       },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "categoryId",
+        },
+      },
+      {
+        $unwind: { path: "$categoryId", preserveNullAndEmptyArrays: true },
+      },
     ]);
 
-    // Fetch multi-product drafts
+    // Fetch multi-product drafts with subCategory populated
     const multiDrafts = await multiProductSchema.aggregate([
       {
         $match: {
@@ -981,6 +991,26 @@ export const getAllDraftProducts = async (req, res) => {
           as: "subProductsDetails",
         },
       },
+      // Populate categoryId for each subProduct
+      {
+        $lookup: {
+          from: "categories",
+          localField: "subProductsDetails.categoryId",
+          foreignField: "_id",
+          as: "subProductCategories",
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "categoryId",
+        },
+      },
+      {
+        $unwind: { path: "$categoryId", preserveNullAndEmptyArrays: true },
+      },
       {
         $project: {
           _id: "$mainProduct._id",
@@ -993,37 +1023,61 @@ export const getAllDraftProducts = async (req, res) => {
           minimumBudget: "$mainProduct.minimumBudget",
           productType: "$mainProduct.productType",
           description: "$mainProduct.description",
-          categoryId: "$mainProduct.categoryId",
+          categoryId: "$categoryId", // Use the populated categoryId from lookup
           subCategoryId: "$mainProduct.subCategoryId",
           userId: "$mainProduct.userId",
           brand: "$mainProduct.brand",
           paymentAndDelivery: "$mainProduct.paymentAndDelivery",
           totalBidCount: "$mainProduct.totalBidCount",
-          subProducts: "$subProductsDetails",
+          subProducts: {
+            $map: {
+              input: "$subProductsDetails",
+              as: "subProduct",
+              in: {
+                $mergeObjects: [
+                  "$$subProduct",
+                  {
+                    categoryId: {
+                      $arrayElemAt: [
+                        {
+                          $filter: {
+                            input: "$subProductCategories",
+                            cond: { $eq: ["$$this._id", "$$subProduct.categoryId"] }
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          },
         },
       },
     ]);
 
     // Merge both into a single array
- const allDraftProducts = [
-  ...singleDrafts.map(product => ({ ...product, subProducts: [] })),
-  ...multiDrafts
-];
+    const allDraftProducts = [
+      ...singleDrafts.map(product => ({ ...product, subProducts: [] })),
+      ...multiDrafts
+    ];
 
-const finalProducts = mergeDraftProducts(allDraftProducts);
+    const finalProducts = mergeDraftProducts(allDraftProducts);
 
     return ApiResponse.successResponse(
       res,
       200,
       "Draft products fetched successfully",
-      { products: finalProducts }
+      finalProducts
     );
   } catch (error) {
     console.error(error);
     return ApiResponse.errorResponse(
       res,
-      500,
+      400,
       error.message || "Failed to fetch draft products"
     );
   }
 };
+
