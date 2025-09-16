@@ -7,10 +7,10 @@ import bidSchema from "../schemas/bid.schema.js";
 export const addBid = async (req, res) => {
   try {
     const { budgetQuation, status, availableBrand, earliestDeliveryDate, businessType } = req.body;
-    const { sellerId, productId } = req.params;
-    const buyerId = req.user.userId;
+    const { buyerId, productId } = req.params;
+    const sellerId = req.user.userId;
 
-    if (!isValidObjectId(sellerId) || !isValidObjectId(productId)) {
+    if (!isValidObjectId(buyerId) || !isValidObjectId(productId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid sellerId or productId");
     }
     if (!budgetQuation) {
@@ -49,49 +49,52 @@ export const addBid = async (req, res) => {
 // Get all bids for the logged-in user (buyer)
 export const getAllBids = async (req, res) => {
   try {
-    const buyerId = req.user.userId;
+    const userId = req.user.userId; // Logged-in user
 
     const bids = await Bid.aggregate([
       {
         $match: {
-          buyerId: new mongoose.Types.ObjectId(buyerId),
-        },
+          $or: [
+            { buyerId: new mongoose.Types.ObjectId(userId) },
+            { sellerId: new mongoose.Types.ObjectId(userId) }
+          ]
+        }
       },
       {
         $lookup: {
           from: "products",
           localField: "productId",
           foreignField: "_id",
-          as: "product",
-        },
+          as: "product"
+        }
       },
       { $unwind: "$product" },
-
       {
         $lookup: {
           from: "users",
           localField: "sellerId",
           foreignField: "_id",
-          as: "seller",
-        },
+          as: "seller"
+        }
       },
       { $unwind: "$seller" },
-
       {
         $lookup: {
           from: "users",
           localField: "buyerId",
           foreignField: "_id",
-          as: "buyer",
-        },
+          as: "buyer"
+        }
       },
       { $unwind: "$buyer" },
-
       {
         $project: {
           _id: 1,
           budgetQuation: 1,
           status: 1,
+          availableBrand: 1,
+          earliestDeliveryDate: 1,
+          businessType: 1,
           createdAt: 1,
           updatedAt: 1,
           product: 1,
@@ -100,18 +103,18 @@ export const getAllBids = async (req, res) => {
             firstName: 1,
             lastName: 1,
             email: 1,
-            phone: 1,
+            phone: 1
           },
           buyer: {
             _id: 1,
             firstName: 1,
             lastName: 1,
             email: 1,
-            phone: 1,
-          },
-        },
-      },
-    ])
+            phone: 1
+          }
+        }
+      }
+    ]);
 
     return ApiResponse.successResponse(
       res,

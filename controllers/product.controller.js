@@ -445,59 +445,82 @@ export const getMultiProduct = async (req, res) => {
   }
 };
 
-// Update multi-product draft status
-export const updateMultiProductDraftStatus = async (req, res) => {
-  const { multiProductId } = req.params;
+export const updateDraftStatus = async (req, res) => {
   const userId = req.user?.userId;
-  const { draft } = req.body;
-  
+  const { draft, productId, mainProductId } = req.body;
+
+  // Validate draft value
+  if (typeof draft !== 'boolean') {
+    return ApiResponse.errorResponse(res, 400, "Draft status must be a boolean value");
+  }
+
   try {
-    if (!multiProductId || !mongoose.Types.ObjectId.isValid(multiProductId)) {
-      return ApiResponse.errorResponse(res, 400, "Invalid or missing multiProductId");
-    }
-    
-    const multiProduct = await MultiProduct.findById(multiProductId);
-    
-    if (!multiProduct) {
-      return ApiResponse.errorResponse(res, 404, "Multi-product entry not found");
-    }
-    
-    // Verify ownership
-    if (multiProduct.userId.toString() !== userId) {
-      return ApiResponse.errorResponse(res, 403, "Not authorized to modify this multi-product entry");
-    }
-    
-    // Update draft status
-    multiProduct.draft = draft === "true";
-    await multiProduct.save();
-    
-    // If publishing (draft -> false), add all products to category
-    if (!multiProduct.draft) {
-      for (const productId of multiProduct.subProducts) {
-        const updatedCategory = await Category.findOneAndUpdate(
-          { _id: multiProduct.categoryId, "subCategories._id": multiProduct.subCategoryId },
-          { $push: { "subCategories.$.products": productId } },
-          { new: true }
-        );
-        
-        if (!updatedCategory) {
-          return ApiResponse.errorResponse(res, 404, "Category or SubCategory not found");
-        }
+    // Case 1: Update all sub-products of a multi-product by mainProductId
+    if (mainProductId && mongoose.Types.ObjectId.isValid(mainProductId)) {
+      const multiProduct = await multiProductSchema.findOne({ mainProductId: mainProductId });
+
+      if (!multiProduct) {
+        return ApiResponse.errorResponse(res, 404, "Multi-product entry not found");
       }
+
+      // Verify ownership
+      if (multiProduct.userId.toString() !== userId) {
+        return ApiResponse.errorResponse(res, 403, "Not authorized to modify this multi-product entry");
+      }
+
+      // Update draft status for all sub-products
+      await Promise.all(
+        multiProduct.subProducts.map(async (subProductId) => {
+          await productSchema.findByIdAndUpdate(subProductId, { draft });
+        })
+      );
+
+      // Update the multi-product's draft status
+      multiProduct.draft = draft;
+      await multiProduct.save();
+
+      return ApiResponse.successResponse(
+        res,
+        200,
+        `All sub-products and multi-product ${draft ? 'set to draft' : 'published'} successfully`,
+        multiProduct
+      );
     }
-    
-    return ApiResponse.successResponse(
-      res,
-      200,
-      `Multi-product ${multiProduct.draft ? 'saved as draft' : 'published successfully'}`,
-      multiProduct
-    );
+
+    // Case 2: Update single product by productId
+    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
+      const product = await productSchema.findById(productId);
+      if (!product) {
+        return ApiResponse.errorResponse(res, 404, "Product not found");
+      }
+
+      // Verify ownership
+      if (product.userId && product.userId.toString() !== userId) {
+        return ApiResponse.errorResponse(res, 403, "Not authorized to modify this product");
+      }
+
+      const updatedProduct = await productSchema.findByIdAndUpdate(
+        productId, 
+        { draft }, 
+        { new: true }
+      );
+
+      return ApiResponse.successResponse(
+        res,
+        200,
+        `Product ${draft ? 'set to draft' : 'published'} successfully`,
+        updatedProduct
+      );
+    }
+
+    // If neither mainProductId nor productId is provided
+    return ApiResponse.errorResponse(res, 400, "Either mainProductId or productId is required");
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(
       res,
-      400,
-      err.message || "Something went wrong while updating multi-product"
+      500,
+      err.message || "Something went wrong while updating draft status"
     );
   }
 };

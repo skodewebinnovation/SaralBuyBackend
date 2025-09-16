@@ -5,7 +5,7 @@ import auth from "../middleware/auth.js";
 const router = express.Router();
 
 
-router.post("/create/:sellerId/:productId", auth, bidController.addBid);
+router.post("/create/:buyerId/:productId", auth, bidController.addBid);
 router.get("/get-all-bid", auth, bidController.getAllBids);
 router.delete("/delete-bid/:id", auth, bidController.deleteBid);
 router.get('/bid-overview/:id',auth,bidController.bidOverViewbyId)
