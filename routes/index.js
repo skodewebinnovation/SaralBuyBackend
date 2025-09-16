@@ -3,6 +3,7 @@ import categoryRouter from "./category.route.js"
 import productRouter from "./product.route.js"
 import userRouter from "./user.route.js"
 import bidRouter from "./bid.route.js"
+import requirementRouter from "./requirement.route.js"
 const router = express.Router();
 
 
@@ -12,7 +13,8 @@ const routes =[
     {path:"/category",router:categoryRouter},
     {path:"/product",router:productRouter},
     {path:'/user',router:userRouter},
-    {path:'/bid',router:bidRouter}
+    {path:'/bid',router:bidRouter},
+    {path:'/requirement',router:requirementRouter}
 ]
 
 

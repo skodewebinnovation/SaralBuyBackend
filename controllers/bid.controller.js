@@ -3,6 +3,7 @@ import mongoose from "mongoose";
 import { ApiResponse } from "../helper/ApiReponse.js"
 import { isValidObjectId } from "../helper/isValidId.js"
 import bidSchema from "../schemas/bid.schema.js";
+import productSchema from "../schemas/product.schema.js";
 // Create a new bid
 export const addBid = async (req, res) => {
   try {
@@ -31,6 +32,13 @@ export const addBid = async (req, res) => {
       earliestDeliveryDate,
       businessType
     });
+
+    // Increment totalBidCount for the product
+    const updatedProduct = await productSchema.findByIdAndUpdate(
+      new mongoose.Types.ObjectId(productId),
+      { $inc: { totalBidCount: 1 } },
+      { new: true }
+    );
     return ApiResponse.successResponse(
       res,
       200,

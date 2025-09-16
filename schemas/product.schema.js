@@ -50,6 +50,8 @@ const productSchema = new mongoose.Schema({
     organizationName: { type: String, default: "" },
     organizationAddress: { type: String, default: "" },
   },
+// Track total number of bids placed on this product
+  totalBidCount: { type: Number, default: 0 }
 },{
   timestamps:true
 });

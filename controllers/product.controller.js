@@ -812,3 +812,82 @@ export const getDraftProducts = async (req, res) => {
   }
 };
 
+// Get all draft products (single and multi) for the current user
+export const getAllDraftProducts = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.userId;
+    if (!userId) {
+      return ApiResponse.errorResponse(res, 400, "User not authenticated");
+    }
+
+    // Single draft products (basic product info only, no category/subCategory joins)
+    const singleDrafts = await productSchema.aggregate([
+      {
+        $match: {
+          draft: true,
+          userId: new mongoose.Types.ObjectId(userId),
+        },
+      },
+    ]);
+
+    // Multi-product drafts (mainProduct + subProducts, but no deep category/subCategory on them)
+    const multiDrafts = await multiProductSchema.aggregate([
+      {
+        $match: {
+          draft: true,
+          userId: new mongoose.Types.ObjectId(userId),
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "mainProductId",
+          foreignField: "_id",
+          as: "mainProduct",
+        },
+      },
+      { $unwind: { path: "$mainProduct", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "products",
+          localField: "subProducts",
+          foreignField: "_id",
+          as: "subProductsDetails",
+        },
+      },
+      {
+        $project: {
+          _id: 1,
+          draft: 1,
+          createdAt: 1,
+          updatedAt: 1,
+          mainProduct: 1,              // product as-is
+          subProducts: "$subProductsDetails", // products as-is
+          category: 1,
+          subCategory: 1,
+          user: { _id: 1, name: 1, email: 1 },
+        },
+      },
+    ]);
+
+    // Remove mainProduct from subProducts for each multiDraft
+    const cleanedMultiDrafts = multiDrafts.map(multi => {
+      if (!multi.mainProduct || !multi.mainProduct._id) return multi;
+      const mainId = multi.mainProduct._id.toString();
+      return {
+        ...multi,
+        subProducts: Array.isArray(multi.subProducts)
+          ? multi.subProducts.filter(p => p._id.toString() !== mainId)
+          : multi.subProducts
+      };
+    });
+
+    return ApiResponse.successResponse(res, 200, "Draft products fetched successfully", {
+      singleDrafts,
+      multiDrafts: cleanedMultiDrafts,
+    });
+  } catch (error) {
+    console.error(error);
+    return ApiResponse.errorResponse(res, 500, error.message || "Failed to fetch draft products");
+  }
+};
