@@ -1,5 +1,5 @@
 import express from 'express';
-import { addProduct, getProducts, updateProduct, deleteProduct, searchProductsController, getProductByName, getProductById, getDraftProducts, getMultiProduct, updateDraftStatus, getAllDraftProducts } from '../controllers/product.controller.js';
+import { addProduct, getProducts, updateProduct, deleteProduct, searchProductsController, getProductByName, getProductById, getDraftProducts, getMultiProduct, updateDraftStatus, getAllDraftProducts,getDraftProductById } from '../controllers/product.controller.js';
 import uploadSingleImage from '../middleware/uploadMiddleware.js';
 import { uploadProductFiles } from '../middleware/productUploadMiddleware.js';
 import auth from '../middleware/auth.js';
@@ -14,6 +14,7 @@ router.delete('/delete-product/:productId', deleteProduct);
 router.get('/get-product/:productName', getProductByName);
 router.get('/get-product-by-id/:productId', getProductById);
 router.get('/get-draft-products', auth, getAllDraftProducts);
+router.get('/get-draft-product/:productId', auth, getDraftProductById);
 router.patch("/updatedraft", auth, updateDraftStatus);
 
 

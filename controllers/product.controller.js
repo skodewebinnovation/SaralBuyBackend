@@ -8,7 +8,6 @@ import {isValidObjectId}  from "../helper/isValidId.js"
 import multiProductSchema from "../schemas/multiProduct.schema.js";
 
 
-
 const mergeDraftProducts = (allDrafts) => {
   const subProductIds = new Set();
 
@@ -26,26 +25,29 @@ const mergeDraftProducts = (allDrafts) => {
   for (const product of allDrafts) {
     const productId = product._id.toString();
 
-    // Step 2: Exclude if this product is only a subproduct elsewhere
+    // Skip if this product is only a subproduct elsewhere (and has no own subs)
     const isSubProductOnly = subProductIds.has(productId) && (!product.subProducts || product.subProducts.length === 0);
     if (isSubProductOnly) continue;
 
-    // Step 3: Start with existing subProducts (if any)
-    const existingSubs = product.subProducts || [];
+    // If the product has subProducts, ensure it includes itself
+    if (product.subProducts && product.subProducts.length > 0) {
+      const existingSubs = product.subProducts;
 
-    // Step 4: Check if the product itself is already in subProducts
-    const isAlreadyIncluded = existingSubs.some(sub => sub._id.toString() === productId);
+      const isAlreadyIncluded = existingSubs.some(sub => sub._id.toString() === productId);
 
-    // Step 5: Add the product itself if not already included
-    const finalSubProducts = isAlreadyIncluded
-      ? existingSubs
-      : [...existingSubs, product];
+      const finalSubProducts = isAlreadyIncluded
+        ? existingSubs
+        : [...existingSubs, product]; // append itself
 
-    // Step 6: Push the merged product
-    merged.push({
-      ...product,
-      subProducts: finalSubProducts,
-    });
+      merged.push({
+        ...product,
+        subProducts: finalSubProducts,
+      });
+    } else {
+      // Product has no subProducts – don't add empty subProducts key
+      const { subProducts, ...rest } = product;
+      merged.push(rest);
+    }
   }
 
   return merged;
@@ -1081,3 +1083,168 @@ export const getAllDraftProducts = async (req, res) => {
   }
 };
 
+
+export const getDraftProductById = async (req, res) => {
+  try {
+    const { productId } = req.params;
+    const userId = req.user?._id || req.user?.userId;
+    
+    if (!userId) {
+      return ApiResponse.errorResponse(res, 400, "User not authenticated");
+    }
+    
+    if (!mongoose.Types.ObjectId.isValid(productId)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid product ID");
+    }
+    
+    const objectProductId = new mongoose.Types.ObjectId(productId);
+
+    const singleDraft = await productSchema.aggregate([
+      {
+        $match: {
+          _id: objectProductId,
+          draft: true,
+          userId: new mongoose.Types.ObjectId(userId),
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "categoryId",
+        },
+      },
+      {
+        $unwind: { path: "$categoryId", preserveNullAndEmptyArrays: true },
+      },
+    ]);
+
+    const multiDraft = await multiProductSchema.aggregate([
+      {
+        $match: {
+          mainProductId: objectProductId,
+          draft: true,
+          userId: new mongoose.Types.ObjectId(userId),
+        },
+      },
+      {
+        $lookup: {
+          from: "products",
+          localField: "mainProductId",
+          foreignField: "_id",
+          as: "mainProduct",
+        },
+      },
+      { $unwind: { path: "$mainProduct", preserveNullAndEmptyArrays: true } },
+      {
+        $lookup: {
+          from: "products",
+          localField: "subProducts",
+          foreignField: "_id",
+          as: "subProductsDetails",
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "subProductsDetails.categoryId",
+          foreignField: "_id",
+          as: "subProductCategories",
+        },
+      },
+      {
+        $lookup: {
+          from: "categories",
+          localField: "categoryId",
+          foreignField: "_id",
+          as: "categoryId",
+        },
+      },
+      { $unwind: { path: "$categoryId", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id: "$mainProduct._id",
+          draft: 1,
+          createdAt: "$mainProduct.createdAt",
+          updatedAt: "$mainProduct.updatedAt",
+          title: "$mainProduct.title",
+          quantity: "$mainProduct.quantity",
+          image: "$mainProduct.image",
+          minimumBudget: "$mainProduct.minimumBudget",
+          productType: "$mainProduct.productType",
+          description: "$mainProduct.description",
+          categoryId: "$categoryId",
+          subCategoryId: "$mainProduct.subCategoryId",
+          userId: "$mainProduct.userId",
+          brand: "$mainProduct.brand",
+          paymentAndDelivery: "$mainProduct.paymentAndDelivery",
+          totalBidCount: "$mainProduct.totalBidCount",
+          subProducts: {
+            $map: {
+              input: "$subProductsDetails",
+              as: "subProduct",
+              in: {
+                $mergeObjects: [
+                  "$$subProduct",
+                  {
+                    categoryId: {
+                      $arrayElemAt: [
+                        {
+                          $filter: {
+                            input: "$subProductCategories",
+                            cond: {
+                              $eq: ["$$this._id", "$$subProduct.categoryId"]
+                            }
+                          }
+                        },
+                        0
+                      ]
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        }
+      },
+    ]);
+
+    // If found as multi-product, apply the same logic as getAllDraftProducts
+    if (multiDraft.length > 0) {
+      const product = multiDraft[0];
+      
+      // Apply the mergeDraftProducts logic for single product
+      const allDrafts = [product];
+      const merged = mergeDraftProducts(allDrafts);
+      
+      return ApiResponse.successResponse(
+        res,
+        200,
+        "Draft product fetched successfully",
+        merged[0]
+      );
+    }
+
+    // If found as single draft, return without subProducts array
+    if (singleDraft.length > 0) {
+      const product = singleDraft[0];
+      return ApiResponse.successResponse(
+        res,
+        200,
+        "Draft product fetched successfully",
+        product
+      );
+    }
+
+    return ApiResponse.errorResponse(res, 404, "Draft product not found");
+    
+  } catch (error) {
+    console.error(error);
+    return ApiResponse.errorResponse(
+      res,
+      500,
+      error.message || "Failed to fetch draft product"
+    );
+  }
+};
