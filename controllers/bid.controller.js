@@ -238,7 +238,7 @@ export const bidOverViewbyId = async (req, res) => {
       {
         $lookup: {
           from: "users",
-          localField: "buyerId",
+          localField: "sellerId",
           foreignField: "_id",
           as: "seller"
         }
@@ -248,7 +248,7 @@ export const bidOverViewbyId = async (req, res) => {
       {
         $lookup: {
           from: "users",
-          localField: "sellerId",
+          localField: "buyerId",
           foreignField: "_id",
           as: "buyer"
         }
