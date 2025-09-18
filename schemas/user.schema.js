@@ -17,7 +17,8 @@ const userSchema = new mongoose.Schema({
   address:      { type: String, default: null },
   aadhaarNumber:  { type: String },
   aadhaarImage:   { type: String }, // file path or URL
-  isAadhaarVerified: { type: Boolean, default: false }
+  isAadhaarVerified: { type: Boolean, default: false },
+  profileImage: { type: String, default: null },
 }, { timestamps: true });
 
 export default mongoose.model('User', userSchema);

@@ -36,6 +36,7 @@ const uploader = multer({
 const uploadSingleImage = (req, res, next) => {
   uploader(req, res, (err) => {
     if (err instanceof multer.MulterError) {
+      console.log(err)
       return res.status(400).json({
         success: false,
         message: `Multer error: ${err.message}`,

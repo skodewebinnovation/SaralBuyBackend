@@ -11,6 +11,7 @@ import multiProductSchema from "../schemas/multiProduct.schema.js";
 const mergeDraftProducts = (allDrafts) => {
   const subProductIds = new Set();
 
+
   // Step 1: Collect all subproduct IDs
   allDrafts.forEach(product => {
     if (product.subProducts && product.subProducts.length > 0) {
@@ -494,6 +495,7 @@ export const getMultiProduct = async (req, res) => {
 };
 
 export const updateDraftStatus = async (req, res) => {
+  console.log(req.body,123126767123)
   const userId = req.user?.userId;
   const { draft, productId, mainProductId, ...otherFields } = req.body;
 

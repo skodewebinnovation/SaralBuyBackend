@@ -176,10 +176,10 @@ export const getProfile = async (req, res) => {
 export const updateProfile = async (req, res) => {
   try {
     const { firstName, lastName, email, phone,aadhaarNumber ,address} = req.body;
-    console.log(req.body)
-
     const documentFile = req.files?.document?.[0];
-    const documentUrl = documentFile?.path || null;  
+    const profilePic = req.files?.image?.[0];
+    const documentUrl = documentFile?.path || null;
+    const profilePicUrl = profilePic?.path || null;
     // Prevent duplicate email or phone
     if (email) {
       const existingEmail = await userSchema.findOne({ email, _id: { $ne: req.user.userId } });
@@ -197,6 +197,7 @@ export const updateProfile = async (req, res) => {
     if(documentUrl) updates.aadhaarImage = documentUrl;
     if(address) updates.address = address;
     if(aadhaarNumber) updates.aadhaarNumber=aadhaarNumber
+    if(profilePicUrl) updates.profileImage = profilePicUrl;
 
     const user = await User.findByIdAndUpdate(req.user.userId, updates, { new: true }).select('-password');
     res.status(200).json(user);
