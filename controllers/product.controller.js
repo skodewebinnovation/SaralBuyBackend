@@ -868,7 +868,8 @@ export const getProductByName = async (req, res) => {
     const { productName } = req.params;
         if (!productName) return ApiResponse.successResponse(res, 200,'empty query',[]);
     const products = await productSchema.find({
-      title: { $regex: productName, $options: "i"},  
+      title: { $regex: productName, $options: "i"},
+      draft:false  
     },{
         title:1,
         image:1,
