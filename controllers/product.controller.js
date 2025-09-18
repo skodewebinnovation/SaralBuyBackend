@@ -868,8 +868,7 @@ export const getProductByName = async (req, res) => {
     const { productName } = req.params;
         if (!productName) return ApiResponse.successResponse(res, 200,'empty query',[]);
     const products = await productSchema.find({
-      title: { $regex: productName, $options: "i"},
-      draft:false  
+      title: { $regex: productName, $options: "i"},      draft:false  
     },{
         title:1,
         image:1,
@@ -895,31 +894,63 @@ export const getProductById = async (req, res) => {
     if (!isValidObjectId(productId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid product ID");
     }
-    let product = await productSchema.findById(productId).populate({
-      path:'userId',
-      select:"firstName lastName address"
-    }).populate({
-      path:'categoryId',
-      select:'categoryName subCategories'
-    })
+
+    // 1. Find the product
+    let product = await productSchema.findById(productId)
+      .populate({ path: "userId", select: "firstName lastName address" })
+      .populate({ path: "categoryId", select: "categoryName" });
 
     if (!product) {
       return ApiResponse.errorResponse(res, 404, "Product not found");
     }
-     const populatedSubCategory = product.categoryId.subCategories.find(
-      sub => sub._id.toString() === product.subCategoryId.toString()
-    );
 
-    product = product.toObject(); 
-    product.subCategoryId = populatedSubCategory || product.subCategoryId;
-    
-   
-    return ApiResponse.successResponse(res, 200, "Product found", product);
+    // 2. Check if product is part of any MultiProduct
+    const multiProduct = await multiProductSchema
+      .findOne({
+        $or: [
+          { mainProductId: product._id },
+          { subProducts: product._id }
+        ]
+      })
+      .populate({
+        path: "mainProductId",
+        populate: [
+          { path: "userId", select: "firstName lastName address" },
+          { path: "categoryId", select: "categoryName" }
+        ]
+      })
+      .populate({
+        path: "subProducts",
+        populate: [
+          { path: "userId", select: "firstName lastName address" },
+          { path: "categoryId", select: "categoryName" }
+        ]
+      });
+
+    if (multiProduct && multiProduct.mainProductId) {
+      const mainProduct = multiProduct.mainProductId.toObject();
+      const subProducts = (multiProduct.subProducts || []).map(sp =>
+        sp.toObject ? sp.toObject() : sp
+      );
+
+      return ApiResponse.successResponse(res, 200, "Product found", [
+        { mainProduct, subProducts }
+      ]);
+    }
+
+    // If not part of MultiProduct
+    return ApiResponse.successResponse(res, 200, "Product found", [
+      { mainProduct: product.toObject(), subProducts: [] }
+    ]);
+
   } catch (error) {
     console.error(error);
     return ApiResponse.errorResponse(res, 500, error.message);
   }
 };
+
+
+
 
 export const getDraftProducts = async (req, res) => {
   try {
