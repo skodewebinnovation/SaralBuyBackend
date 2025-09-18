@@ -495,15 +495,18 @@ export const getMultiProduct = async (req, res) => {
 
 export const updateDraftStatus = async (req, res) => {
   const userId = req.user?.userId;
-  const { draft, productId, mainProductId } = req.body;
+  const { draft, productId, mainProductId, ...otherFields } = req.body;
 
-  // Validate draft value
   if (typeof draft !== 'boolean') {
     return ApiResponse.errorResponse(res, 400, "Draft status must be a boolean value");
   }
 
+  const getUpdateData = (fields) => {
+    const { productId, mainProductId, draft, ...rest } = fields;
+    return { draft, ...rest };
+  };
+
   try {
-    // Case 1: Update all sub-products of a multi-product by mainProductId
     if (mainProductId && mongoose.Types.ObjectId.isValid(mainProductId)) {
       const multiProduct = await multiProductSchema.findOne({ mainProductId: mainProductId });
 
@@ -511,19 +514,18 @@ export const updateDraftStatus = async (req, res) => {
         return ApiResponse.errorResponse(res, 404, "Multi-product entry not found");
       }
 
-      // Verify ownership
       if (multiProduct.userId.toString() !== userId) {
         return ApiResponse.errorResponse(res, 403, "Not authorized to modify this multi-product entry");
       }
 
-      // Update draft status for all sub-products
+      const updateData = getUpdateData(req.body);
+
       await Promise.all(
         multiProduct.subProducts.map(async (subProductId) => {
-          await productSchema.findByIdAndUpdate(subProductId, { draft });
+          await productSchema.findByIdAndUpdate(subProductId, updateData);
         })
       );
 
-      // Update the multi-product's draft status
       multiProduct.draft = draft;
       await multiProduct.save();
 
@@ -547,9 +549,11 @@ export const updateDraftStatus = async (req, res) => {
         return ApiResponse.errorResponse(res, 403, "Not authorized to modify this product");
       }
 
+      const updateData = getUpdateData(req.body);
+
       const updatedProduct = await productSchema.findByIdAndUpdate(
-        productId, 
-        { draft }, 
+        productId,
+        updateData,
         { new: true }
       );
 
