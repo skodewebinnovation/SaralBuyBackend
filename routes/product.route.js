@@ -15,7 +15,7 @@ router.get('/get-product/:productName', getProductByName);
 router.get('/get-product-by-id/:productId', getProductById);
 router.get('/get-draft-products', auth, getAllDraftProducts);
 router.get('/get-draft-product/:productId', auth, getDraftProductById);
-router.patch("/updatedraft", auth, updateDraftStatus);
+router.patch("/updatedraft/:isMultiple", auth,uploadProductFiles, updateDraftStatus);
 
 
 export default router;

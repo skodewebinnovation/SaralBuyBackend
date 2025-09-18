@@ -16,7 +16,9 @@ const mergeDraftProducts = (allDrafts) => {
   allDrafts.forEach(product => {
     if (product.subProducts && product.subProducts.length > 0) {
       product.subProducts.forEach(sub => {
-        subProductIds.add(sub._id.toString());
+        if (sub && sub._id) {
+          subProductIds.add(sub._id.toString());
+        }
       });
     }
   });
@@ -24,6 +26,11 @@ const mergeDraftProducts = (allDrafts) => {
   const merged = [];
 
   for (const product of allDrafts) {
+    if (!product || !product._id) {
+      console.warn("Skipping product without _id:", product);
+      continue;
+    }
+
     const productId = product._id.toString();
 
     // Skip if this product is only a subproduct elsewhere (and has no own subs)
@@ -34,7 +41,9 @@ const mergeDraftProducts = (allDrafts) => {
     if (product.subProducts && product.subProducts.length > 0) {
       const existingSubs = product.subProducts;
 
-      const isAlreadyIncluded = existingSubs.some(sub => sub._id.toString() === productId);
+      const isAlreadyIncluded = existingSubs.some(
+        sub => sub && sub._id && sub._id.toString() === productId
+      );
 
       const finalSubProducts = isAlreadyIncluded
         ? existingSubs
@@ -495,80 +504,143 @@ export const getMultiProduct = async (req, res) => {
 };
 
 export const updateDraftStatus = async (req, res) => {
-  console.log(req.body,123126767123)
   const userId = req.user?.userId;
-  const { draft, productId, mainProductId, ...otherFields } = req.body;
-
-  if (typeof draft !== 'boolean') {
-    return ApiResponse.errorResponse(res, 400, "Draft status must be a boolean value");
+  let products;
+  try {
+    if (req.body.products) {
+      try {
+        products = JSON.parse(req.body.products);
+        console.log("Parsed from req.body.products:", products);
+      } catch (e) {
+        console.error("Error parsing req.body.products:", e);
+        return ApiResponse.errorResponse(res, 400, "Invalid products data format");
+      }
+    } else if (Array.isArray(req.body)) {
+      products = req.body;
+      console.log("Parsed from req.body (array root):", products);
+    } else {
+      console.log("req.body is neither products field nor array:", req.body);
+    }
+  } catch (error) {
+    console.error('Error parsing products:', error);
+    return ApiResponse.errorResponse(res, 400, "Invalid products data format");
   }
 
-  const getUpdateData = (fields) => {
-    const { productId, mainProductId, draft, ...rest } = fields;
-    return { draft, ...rest };
-  };
+  const draft = false;
 
   try {
-    if (mainProductId && mongoose.Types.ObjectId.isValid(mainProductId)) {
-      const multiProduct = await multiProductSchema.findOne({ mainProductId: mainProductId });
-
-      if (!multiProduct) {
-        return ApiResponse.errorResponse(res, 404, "Multi-product entry not found");
-      }
-
-      if (multiProduct.userId.toString() !== userId) {
-        return ApiResponse.errorResponse(res, 403, "Not authorized to modify this multi-product entry");
-      }
-
-      const updateData = getUpdateData(req.body);
-
-      await Promise.all(
-        multiProduct.subProducts.map(async (subProductId) => {
-          await productSchema.findByIdAndUpdate(subProductId, updateData);
-        })
-      );
-
-      multiProduct.draft = draft;
-      await multiProduct.save();
-
-      return ApiResponse.successResponse(
-        res,
-        200,
-        `All sub-products and multi-product ${draft ? 'set to draft' : 'published'} successfully`,
-        multiProduct
-      );
+    console.log('Parsed products:', products); // Debug log to see parsed data
+    
+    // Check if products array is provided
+    if (!Array.isArray(products) || products.length === 0) {
+      return ApiResponse.errorResponse(res, 400, "Products array is required and cannot be empty");
     }
 
-    // Case 2: Update single product by productId
-    if (productId && mongoose.Types.ObjectId.isValid(productId)) {
-      const product = await productSchema.findById(productId);
-      if (!product) {
-        return ApiResponse.errorResponse(res, 404, "Product not found");
-      }
-
-      // Verify ownership
-      if (product.userId && product.userId.toString() !== userId) {
-        return ApiResponse.errorResponse(res, 403, "Not authorized to modify this product");
-      }
-
-      const updateData = getUpdateData(req.body);
-
-      const updatedProduct = await productSchema.findByIdAndUpdate(
-        productId,
-        updateData,
-        { new: true }
-      );
-
-      return ApiResponse.successResponse(
-        res,
-        200,
-        `Product ${draft ? 'set to draft' : 'published'} successfully`,
-        updatedProduct
-      );
+    // Extract and validate all product IDs
+    const productIds = products.map(p => p._id).filter(id => id);
+    
+    if (productIds.length === 0) {
+      return ApiResponse.errorResponse(res, 400, "No valid product IDs found in products array");
     }
 
-    // If neither mainProductId nor productId is provided
-    return ApiResponse.errorResponse(res, 400, "Either mainProductId or productId is required");
+    // Validate ObjectIds
+    const invalidIds = productIds.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return ApiResponse.errorResponse(res, 400, `Invalid product IDs: ${invalidIds.join(', ')}`);
+    }
+
+    const foundProducts = await productSchema.find({ _id: { $in: productIds } });
+
+    if (foundProducts.length !== productIds.length) {
+      const foundIds = foundProducts.map(p => p._id.toString());
+      const missingIds = productIds.filter(id => !foundIds.includes(id));
+      return ApiResponse.errorResponse(res, 404, `Products not found: ${missingIds.join(', ')}`);
+    }
+
+    // Verify ownership for all products
+    const unauthorizedProducts = foundProducts.filter(fp => 
+      fp.userId && fp.userId.toString() !== userId
+    );
+    
+    if (unauthorizedProducts.length > 0) {
+      const unauthorizedIds = unauthorizedProducts.map(p => p._id.toString());
+      return ApiResponse.errorResponse(res, 403, `Not authorized to modify products: ${unauthorizedIds.join(', ')}`);
+    }
+
+    // Create a map of product updates for easier access
+    const productUpdatesMap = new Map();
+    products.forEach(product => {
+      if (product._id) {
+        const { _id, ...productFields } = product;
+
+        // Parse paymentAndDelivery if it's a string
+        if (typeof productFields.paymentAndDelivery === "string") {
+          try {
+            productFields.paymentAndDelivery = JSON.parse(productFields.paymentAndDelivery);
+          } catch (e) {
+            // leave as string if parsing fails
+          }
+        }
+
+        productUpdatesMap.set(_id, productFields);
+      }
+    });
+
+    const imageFiles = req.files?.image || [];
+const documentFiles = req.files?.document || [];
+
+    // Perform bulk updates
+    const updatedProducts = await Promise.all(
+      products.map(async (product, idx) => {
+        const productId = product._id;
+        const specificProductFields = productUpdatesMap.get(productId) || {};
+
+        // Handle image upload (match by index: image_0, image_1, etc.)
+        let imageUrl = null;
+        if (req.files && req.files[`image_${idx}`] && req.files[`image_${idx}`][0]) {
+          imageUrl = req.files[`image_${idx}`][0].path || req.files[`image_${idx}`][0].url || null;
+        } else if (req.files && req.files.image && Array.isArray(req.files.image) && req.files.image[idx]) {
+          imageUrl = req.files.image[idx].path || req.files.image[idx].url || null;
+        }
+
+         // Handle document upload (match by index: document_0, document_1, etc.)
+    let documentUrl = null;
+    if (req.files && req.files[`document_${idx}`] && req.files[`document_${idx}`][0]) {
+      documentUrl = req.files[`document_${idx}`][0].path || req.files[`document_${idx}`][0].url || null;
+    } else if (req.files && req.files.document && Array.isArray(req.files.document) && req.files.document[idx]) {
+      documentUrl = req.files.document[idx].path || req.files.document[idx].url || null;
+    }
+
+        // Combine with draft status (always false) and image if present
+        const updatePayload = {
+          ...specificProductFields,
+          draft
+        };
+        if (imageUrl) updatePayload.image = imageUrl;
+        if (documentUrl) updatePayload.document = documentUrl;
+
+        console.log(`Updating product ${productId} with:`, updatePayload);
+
+        const updateResult = await productSchema.updateOne(
+          { _id: productId },
+          updatePayload
+        );
+        console.log(`Update result for ${productId}:`, updateResult);
+
+        // Re-fetch the updated product to ensure fresh data
+        const updatedDoc = await productSchema.findById(productId);
+        console.log(`Updated product ${productId}:`, updatedDoc);
+        return updatedDoc;
+      })
+    );
+
+    return ApiResponse.successResponse(
+      res,
+      200,
+      `${updatedProducts.length} product(s) published successfully`,
+      updatedProducts
+    );
+
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(
@@ -856,95 +928,17 @@ export const getDraftProducts = async (req, res) => {
       const limitValue = parseInt(limit, 10);
 
       let filter = { draft: true, userId };
+      console.log("Draft fetch filter:", filter);
 
       const total = await productSchema.countDocuments(filter);
       const products = await productSchema.find(filter).skip(skipValue).limit(limitValue);
+      console.log("Draft fetch result:", products);
 
       return ApiResponse.successResponse(res, 200, "Draft products fetched successfully", { total, products });
   } catch (error) {
       return ApiResponse.errorResponse(res, 500, error.message);
   }
 };
-
-// Get all draft products (single and multi) for the current user
-// export const getAllDraftProducts = async (req, res) => {
-//   try {
-//     const userId = req.user?._id || req.user?.userId;
-//     if (!userId) {
-//       return ApiResponse.errorResponse(res, 400, "User not authenticated");
-//     }
-
-//     // Single draft products (basic product info only, no category/subCategory joins)
-//     const singleDrafts = await productSchema.aggregate([
-//       {
-//         $match: {
-//           draft: true,
-//           userId: new mongoose.Types.ObjectId(userId),
-//         },
-//       },
-//     ]);
-
-//     // Multi-product drafts (mainProduct + subProducts, but no deep category/subCategory on them)
-//     const multiDrafts = await multiProductSchema.aggregate([
-//       {
-//         $match: {
-//           draft: true,
-//           userId: new mongoose.Types.ObjectId(userId),
-//         },
-//       },
-//       {
-//         $lookup: {
-//           from: "products",
-//           localField: "mainProductId",
-//           foreignField: "_id",
-//           as: "mainProduct",
-//         },
-//       },
-//       { $unwind: { path: "$mainProduct", preserveNullAndEmptyArrays: true } },
-//       {
-//         $lookup: {
-//           from: "products",
-//           localField: "subProducts",
-//           foreignField: "_id",
-//           as: "subProductsDetails",
-//         },
-//       },
-//       {
-//         $project: {
-//           _id: 1,
-//           draft: 1,
-//           createdAt: 1,
-//           updatedAt: 1,
-//           mainProduct: 1,              // product as-is
-//           subProducts: "$subProductsDetails", // products as-is
-//           category: 1,
-//           subCategory: 1,
-//           user: { _id: 1, name: 1, email: 1 },
-//         },
-//       },
-//     ]);
-
-//     // Remove mainProduct from subProducts for each multiDraft
-//     const cleanedMultiDrafts = multiDrafts.map(multi => {
-//       if (!multi.mainProduct || !multi.mainProduct._id) return multi;
-//       const mainId = multi.mainProduct._id.toString();
-//       return {
-//         ...multi,
-//         subProducts: Array.isArray(multi.subProducts)
-//           ? multi.subProducts.filter(p => p._id.toString() !== mainId)
-//           : multi.subProducts
-//       };
-//     });
-
-//     return ApiResponse.successResponse(res, 200, "Draft products fetched successfully", {
-//       singleDrafts,
-//       multiDrafts: cleanedMultiDrafts,
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     return ApiResponse.errorResponse(res, 500, error.message || "Failed to fetch draft products");
-//   }
-// };
 
 export const getAllDraftProducts = async (req, res) => {
   try {
