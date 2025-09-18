@@ -51,7 +51,10 @@ export const getBuyerRequirements = async (req, res) => {
 
     // Fetch requirements with populated fields
     const requirements = await Requirement.find({ buyerId })
-      .populate('productId')
+     .populate({
+        path: 'productId',
+        populate: { path: 'categoryId', select: '-subCategories' } 
+      })
       .populate('buyerId')
       .populate('sellerId')
       .lean();
