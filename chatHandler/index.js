@@ -291,7 +291,10 @@ export default function chatHandler(server) {
             if (recipientSocket && !recipientSocket.rooms.has(roomId)) {
               recipientSocket.emit('new_message_notification', {
                 roomId,
-                lastMessage: chat?.lastMessage || msgObj
+                lastMessage: chat?.lastMessage || msgObj,
+                productId,
+                sellerId,
+                buyerId: finalBuyerId
               });
             }
           }
