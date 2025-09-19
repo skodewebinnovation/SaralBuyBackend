@@ -1,4 +1,5 @@
-// chatHandler/index.js
+global.userSockets = global.userSockets || new Map();
+
 import { Server as SocketIOServer } from 'socket.io';
 import Chat from '../schemas/chat.schema.js';
 import mongoose from 'mongoose';
@@ -16,9 +17,8 @@ export default function chatHandler(server) {
     pingTimeout: 60000,
     pingInterval: 25000
   });
-
-  // Map to track userId to socketId(s)
-  const userSockets = new Map();
+  global.io = io; 
+  const userSockets = global.userSockets;
 
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
@@ -359,6 +359,25 @@ export default function chatHandler(server) {
           userType: socket.userType,
           message: `${socket.userType} has left the chat`
         });
+      
+          // Real-time product notification event
+          socket.on('send_product_notification', (data) => {
+            const { userId, productId, title, description } = data;
+            if (!userId || !productId || !title || !description) return;
+            const recipientSockets = userSockets.get(String(userId));
+            if (recipientSockets) {
+              for (const sockId of recipientSockets) {
+                const recipientSocket = io.sockets.sockets.get(sockId);
+                if (recipientSocket) {
+                  recipientSocket.emit('product_notification', {
+                    productId,
+                    title,
+                    description
+                  });
+                }
+              }
+            }
+          });
       }
     });
   });

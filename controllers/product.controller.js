@@ -6,6 +6,7 @@ import { v2 as cloudinary } from "cloudinary";
 import userSchema from "../schemas/user.schema.js";
 import {isValidObjectId}  from "../helper/isValidId.js"
 import multiProductSchema from "../schemas/multiProduct.schema.js";
+import productNotificationSchema from "../schemas/productNotification.schema.js";
 
 
 const mergeDraftProducts = (allDrafts) => {
@@ -237,6 +238,65 @@ const handleSingleProduct = async (req, res, { categoryId, subCategoryId, userId
   // ✅ Save product
   const newProduct = new productSchema(processedData);
   const savedProduct = await newProduct.save();
+
+  // --- Product Notification Logic (by creator's location) ---
+  if (!draft) {
+    try {
+      // 1. Get creator's location from user collection
+      const creator = await userSchema.findById(userId, 'currentLocation');
+      const creatorLocation = creator?.currentLocation;
+      console.log("[Notification] Creator location:", creatorLocation);
+
+      if (creatorLocation) {
+        // 2. Find all users with the same location
+        const usersToNotify = await userSchema.find({ currentLocation: creatorLocation }, '_id');
+        console.log("[Notification] Users to notify:", usersToNotify.map(u => u._id.toString()));
+
+        const notifications = [];
+        for (const user of usersToNotify) {
+          notifications.push({
+            userId: user._id,
+            productId: savedProduct._id,
+            title: processedData.title,
+            description: processedData.description,
+          });
+        }
+        if (notifications.length > 0) {
+          const result = await productNotificationSchema.insertMany(notifications);
+          console.log("[Notification] Notifications inserted into DB:", result.map(n => n._id.toString()));
+
+          // Real-time product notification via socket
+          if (global.io && global.userSockets && typeof global.userSockets.get === 'function') {
+            for (const user of usersToNotify) {
+              const userIdStr = String(user._id);
+              const recipientSockets = global.userSockets.get(userIdStr);
+              if (recipientSockets) {
+                for (const sockId of recipientSockets) {
+                  const recipientSocket = global.io.sockets.sockets.get(sockId);
+                  if (recipientSocket) {
+                    recipientSocket.emit('product_notification', {
+                      productId: savedProduct._id,
+                      title: processedData.title,
+                      description: processedData.description
+                    });
+                  }
+                }
+              }
+            }
+          } else {
+            console.warn("[Notification] Skipping socket notification: global.io or global.userSockets not available or not a Map.");
+          }
+        } else {
+          console.log("[Notification] No notifications to insert (no users matched location).");
+        }
+      } else {
+        console.log("[Notification] Creator has no location, skipping notification.");
+      }
+    } catch (err) {
+      console.error("[Notification] Error in notification logic:", err);
+    }
+  }
+  // --- End Product Notification Logic ---
 
   return ApiResponse.successResponse(
     res,
@@ -1235,5 +1295,45 @@ export const getDraftProductById = async (req, res) => {
       500,
       error.message || "Failed to fetch draft product"
     );
+  }
+};
+
+export const getUnseenProductNotifications = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.userId;
+    if (!userId) {
+      return ApiResponse.errorResponse(res, 401, "User not authenticated");
+    }
+    const notifications = await productNotificationSchema.find({
+      userId,
+      seen: false
+    }).sort({ createdAt: -1 });
+    return ApiResponse.successResponse(res, 200, "Unseen product notifications fetched", notifications);
+  } catch (error) {
+    return ApiResponse.errorResponse(res, 500, error.message || "Failed to fetch notifications");
+  }
+};
+
+export const markProductNotificationSeen = async (req, res) => {
+  try {
+    const userId = req.user?._id || req.user?.userId;
+    const { notificationId } = req.body;
+    if (!userId) {
+      return ApiResponse.errorResponse(res, 401, "User not authenticated");
+    }
+    if (!notificationId) {
+      return ApiResponse.errorResponse(res, 400, "Notification ID is required");
+    }
+    const notification = await productNotificationSchema.findOneAndUpdate(
+      { _id: notificationId, userId },
+      { $set: { seen: true } },
+      { new: true }
+    );
+    if (!notification) {
+      return ApiResponse.errorResponse(res, 404, "Notification not found");
+    }
+    return ApiResponse.successResponse(res, 200, "Notification marked as seen", notification);
+  } catch (error) {
+    return ApiResponse.errorResponse(res, 500, error.message || "Failed to mark notification as seen");
   }
 };
