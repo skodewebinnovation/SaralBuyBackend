@@ -17,8 +17,31 @@ export default function chatHandler(server) {
     pingInterval: 25000
   });
 
+  // Map to track userId to socketId(s)
+  const userSockets = new Map();
+
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
+
+    // Listen for user identification (should be sent from frontend after connect)
+    socket.on('identify', ({ userId }) => {
+      if (!userId) return;
+      if (!userSockets.has(userId)) {
+        userSockets.set(userId, new Set());
+      }
+      userSockets.get(userId).add(socket.id);
+      socket.userId = userId;
+    });
+
+    // Clean up on disconnect
+    socket.on('disconnect', () => {
+      if (socket.userId && userSockets.has(socket.userId)) {
+        userSockets.get(socket.userId).delete(socket.id);
+        if (userSockets.get(socket.userId).size === 0) {
+          userSockets.delete(socket.userId);
+        }
+      }
+    });
 
     // Handle joining a chat room
     socket.on('join_room', (data) => {
@@ -243,6 +266,36 @@ export default function chatHandler(server) {
           buyerUnreadCount: chat?.buyerUnreadCount || 0,
           sellerUnreadCount: chat?.sellerUnreadCount || 0
         });
+
+        // Emit last message update for sidebar/chat list
+        io.to(roomId).emit('chat_last_message_update', {
+          roomId,
+          lastMessage: chat?.lastMessage || msgObj
+        });
+
+        // --- Notification logic for users not in the room ---
+        // Determine recipient userId (opposite of sender)
+        let notifyUserId;
+        if (senderType === 'buyer') {
+          notifyUserId = sellerId;
+        } else {
+          notifyUserId = finalBuyerId;
+        }
+
+        // Get all sockets for the recipient
+        const recipientSockets = userSockets.get(String(notifyUserId));
+        if (recipientSockets) {
+          // Check if any of the recipient's sockets are NOT in the room
+          for (const sockId of recipientSockets) {
+            const recipientSocket = io.sockets.sockets.get(sockId);
+            if (recipientSocket && !recipientSocket.rooms.has(roomId)) {
+              recipientSocket.emit('new_message_notification', {
+                roomId,
+                lastMessage: chat?.lastMessage || msgObj
+              });
+            }
+          }
+        }
 
         // Emit last message update for sidebar/chat list
         io.to(roomId).emit('chat_last_message_update', {
