@@ -979,137 +979,94 @@ export const getAllDraftProducts = async (req, res) => {
       return ApiResponse.errorResponse(res, 400, "User not authenticated");
     }
 
-    // Fetch single draft products with subCategory populated
-    const singleDrafts = await productSchema.aggregate([
-      {
-        $match: {
-          draft: true,
-          userId: new mongoose.Types.ObjectId(userId),
-        },
-      },
-      {
-        $lookup: {
-          from: "categories",
-          localField: "categoryId",
-          foreignField: "_id",
-          as: "categoryId",
-        },
-      },
-      {
-        $unwind: { path: "$categoryId", preserveNullAndEmptyArrays: true },
-      },
-    ]);
+    const draftProducts = await productSchema.find({
+      draft: true,
+      userId: userId
+    }).populate("categoryId");
 
-    // Fetch multi-product drafts with subCategory populated
-    const multiDrafts = await multiProductSchema.aggregate([
-      {
-        $match: {
-          draft: true,
-          userId: new mongoose.Types.ObjectId(userId),
-        },
-      },
-      {
-        $lookup: {
-          from: "products",
-          localField: "mainProductId",
-          foreignField: "_id",
-          as: "mainProduct",
-        },
-      },
-      { $unwind: { path: "$mainProduct", preserveNullAndEmptyArrays: true } },
-      {
-        $lookup: {
-          from: "products",
-          localField: "subProducts",
-          foreignField: "_id",
-          as: "subProductsDetails",
-        },
-      },
-      // Populate categoryId for each subProduct
-      {
-        $lookup: {
-          from: "categories",
-          localField: "subProductsDetails.categoryId",
-          foreignField: "_id",
-          as: "subProductCategories",
-        },
-      },
-      {
-        $lookup: {
-          from: "categories",
-          localField: "categoryId",
-          foreignField: "_id",
-          as: "categoryId",
-        },
-      },
-      {
-        $unwind: { path: "$categoryId", preserveNullAndEmptyArrays: true },
-      },
-      {
-        $project: {
-          _id: "$mainProduct._id",
-          draft: 1,
-          createdAt: "$mainProduct.createdAt",
-          updatedAt: "$mainProduct.updatedAt",
-          title: "$mainProduct.title",
-          quantity: "$mainProduct.quantity",
-          image: "$mainProduct.image",
-          minimumBudget: "$mainProduct.minimumBudget",
-          productType: "$mainProduct.productType",
-          description: "$mainProduct.description",
-          categoryId: "$categoryId", // Use the populated categoryId from lookup
-          subCategoryId: "$mainProduct.subCategoryId",
-          userId: "$mainProduct.userId",
-          brand: "$mainProduct.brand",
-          paymentAndDelivery: "$mainProduct.paymentAndDelivery",
-          totalBidCount: "$mainProduct.totalBidCount",
-          subProducts: {
-            $map: {
-              input: "$subProductsDetails",
-              as: "subProduct",
-              in: {
-                $mergeObjects: [
-                  "$$subProduct",
-                  {
-                    categoryId: {
-                      $arrayElemAt: [
-                        {
-                          $filter: {
-                            input: "$subProductCategories",
-                            cond: { $eq: ["$$this._id", "$$subProduct.categoryId"] }
-                          }
-                        },
-                        0
-                      ]
-                    }
-                  }
-                ]
-              }
-            }
-          },
-        },
-      },
-    ]);
+    const multiProducts = await multiProductSchema.find({
+      $or: [
+        { mainProductId: { $in: draftProducts.map(p => p._id) } },
+        { subProducts: { $in: draftProducts.map(p => p._id) } }
+      ]
+    })
+    .populate({
+      path: "mainProductId",
+      populate: { path: "categoryId" }
+    })
+    .populate({
+      path: "subProducts",
+      populate: { path: "categoryId" }
+    });
 
-    // Merge both into a single array
-    const allDraftProducts = [
-      ...singleDrafts.map(product => ({ ...product, subProducts: [] })),
-      ...multiDrafts
-    ];
+    function cleanProduct(prod) {
+      if (!prod) return prod;
+      let p = prod.toObject ? prod.toObject() : { ...prod };
 
-    const finalProducts = mergeDraftProducts(allDraftProducts);
+      if (p.__v !== undefined) delete p.__v;
+
+      if (p.categoryId && p.categoryId.subCategories) {
+        p.categoryId = {
+          _id: p.categoryId._id,
+          categoryName: p.categoryId.categoryName,
+          image: p.categoryId.image,
+          updatedAt: p.categoryId.updatedAt
+        };
+      }
+      
+      return p;
+    }
+
+    const processedProducts = new Set();
+    const result = [];
+
+    for (const multiProduct of multiProducts) {
+      if (multiProduct.mainProductId) {
+        const mainId = multiProduct.mainProductId._id.toString();
+
+        if (processedProducts.has(mainId)) continue;
+        
+        processedProducts.add(mainId);
+        
+        const cleanedMain = cleanProduct(multiProduct.mainProductId);
+
+        const subProductsOnly = (multiProduct.subProducts || [])
+          .filter(sub => sub._id.toString() !== mainId)
+          .map(cleanProduct);
+        
+        result.push({
+          ...cleanedMain,
+          subProducts: subProductsOnly
+        });
+
+        subProductsOnly.forEach(sub => {
+          processedProducts.add(sub._id.toString());
+        });
+      }
+    }
+
+    for (const product of draftProducts) {
+      const productId = product._id.toString();
+      if (!processedProducts.has(productId)) {
+        result.push({
+          ...cleanProduct(product),
+          subProducts: []
+        });
+        processedProducts.add(productId);
+      }
+    }
 
     return ApiResponse.successResponse(
       res,
       200,
       "Draft products fetched successfully",
-      finalProducts
+      result
     );
   } catch (error) {
     console.error(error);
     return ApiResponse.errorResponse(
       res,
-      400,
+      500,
       error.message || "Failed to fetch draft products"
     );
   }
