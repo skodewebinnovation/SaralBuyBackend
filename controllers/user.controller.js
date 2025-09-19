@@ -175,7 +175,7 @@ export const getProfile = async (req, res) => {
 // Edit user profile (firstName, lastName, email, phone)
 export const updateProfile = async (req, res) => {
   try {
-    const { firstName, lastName, email, phone,aadhaarNumber ,address} = req.body;
+    const { firstName, lastName, email, phone,aadhaarNumber ,address,currentLocation} = req.body;
     const documentFile = req.files?.document?.[0];
     const profilePic = req.files?.image?.[0];
     const documentUrl = documentFile?.path || null;
@@ -198,6 +198,7 @@ export const updateProfile = async (req, res) => {
     if(address) updates.address = address;
     if(aadhaarNumber) updates.aadhaarNumber=aadhaarNumber
     if(profilePicUrl) updates.profileImage = profilePicUrl;
+    if(currentLocation) updates.currentLocation = currentLocation;
 
     const user = await User.findByIdAndUpdate(req.user.userId, updates, { new: true }).select('-password');
     res.status(200).json(user);
