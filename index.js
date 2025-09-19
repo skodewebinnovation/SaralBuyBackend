@@ -1,13 +1,16 @@
+// index.js - Debug Version
 import dotenv from 'dotenv'
 dotenv.config();
 import express from 'express'
 import cors from 'cors'
+import http from 'http';
 import { logger } from './logger/windston.js';
 import router from './routes/index.js';
 import mongoCtx from './db/connection.js';
 import cookieParser from 'cookie-parser';
-// import productSchema from './schemas/product.schema.js';
+import chatHandler from './chatHandler/index.js';
 const app = express()
+const server = http.createServer(app);
 mongoCtx()
 app.use(cookieParser());
 app.use(express.json({limit:'10mb'}))
@@ -25,36 +28,30 @@ app.use((req, res, next) => {
 });
 app.use('/api/v1',router)
 
-router.get('/',(_,res)=>{
-    res.send('#index.js working ')
-})
+chatHandler(server);
 
-// async function deleteAllProducts() {
-//   try {
-//       // Delete all products that match the structure (draft: true, etc.)
-//       const result = await productSchema.deleteMany({
-//           draft: true,
-//           categoryId: "68ac9291cebaeb05950ebaaa",
-//           subCategoryId: "68ac9291cebaeb05950ebaab",
-//           userId: "68bb02ec60e1cce1ea96102a",
-//           image: null,
-//           document: null
-//       });
+// Start the server
+const PORT = process.env.PORT || 8000;
+server.listen(PORT, () => {
+  console.log('🚀 ================================');
+  console.log(`🌟 Server running on port ${PORT}`);
+  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔌 Socket.IO endpoint: http://localhost:${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log('🚀 ================================');
+});
 
-//       console.log(`Deleted ${result.deletedCount} products`);
-//       return result;
-//   } catch (error) {
-//       console.error('Error deleting products:', error);
-//       throw error;
-//   }
-// }
+// Handle server errors
+server.on('error', (error) => {
+  console.error('🚫 Server error:', error);
+});
 
-// deleteAllProducts()
-//     .then(result => console.log('Deletion completed:', result))
-//     .catch(error => console.error('Deletion failed:', error));
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  console.log('🛑 SIGTERM received, shutting down gracefully');
+  server.close(() => {
+    console.log('✅ Server closed');
+  });
+});
 
-
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT} ✅`);
-})
+export { server };
