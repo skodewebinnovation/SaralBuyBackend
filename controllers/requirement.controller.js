@@ -3,38 +3,59 @@ import productSchema from "../schemas/product.schema.js";
 import multiProductSchema from "../schemas/multiProduct.schema.js";
 import { ApiResponse } from "../helper/ApiReponse.js";
 import mongoose from "mongoose";
+import requirementSchema from "../schemas/requirement.schema.js";
 
 // Create a requirement (when a seller bids on a product)
 export const createRequirement = async (req, res) => {
   try {
-    const { productId, sellerId,buyerId, budgetAmount } = req.body;
+    const { productId, sellerId, buyerId, budgetAmount } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(productId) || !mongoose.Types.ObjectId.isValid(sellerId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid productId or sellerId");
     }
-    if (!buyerId) {
-      return ApiResponse.errorResponse(res, 400, "Buyer not authenticated");
+    if (!buyerId || !mongoose.Types.ObjectId.isValid(buyerId)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid buyerId");
     }
     if (typeof budgetAmount !== "number" || isNaN(budgetAmount)) {
       return ApiResponse.errorResponse(res, 400, "Invalid budgetAmount");
     }
 
-    // Optionally, check that the product belongs to the buyer
+    // check product exists
     const product = await productSchema.findById(productId);
     if (!product) {
       return ApiResponse.errorResponse(res, 404, "Product not found");
     }
 
-    const requirement = new Requirement({
-      productId,
-      sellerId,
-      buyerId,
-      budgetAmount
-    });
+    // check if requirement for this product & buyer exists
+    let requirement = await requirementSchema.findOne({ productId, buyerId });
 
-    await requirement.save();
+    if (requirement) {
+      // check if seller already exists in sellers array
+      const existingSeller = requirement.sellers.find(
+        (s) => s.sellerId.toString() === sellerId
+      );
 
-    return ApiResponse.successResponse(res, 201, "Requirement created successfully", requirement);
+      if (existingSeller) {
+        // update budgetAmount if seller already exists
+        existingSeller.budgetAmount = budgetAmount;
+      } else {
+        // add new seller entry
+        requirement.sellers.push({ sellerId, budgetAmount });
+      }
+
+      await requirement.save();
+      return ApiResponse.successResponse(res, 200, "Requirement updated successfully", requirement);
+    } else {
+      // create new requirement with sellers array
+      requirement = new requirementSchema({
+        productId,
+        buyerId,
+        sellers: [{ sellerId, budgetAmount }]
+      });
+
+      await requirement.save();
+      return ApiResponse.successResponse(res, 201, "Requirement created successfully", requirement);
+    }
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(res, 500, err.message || "Failed to create requirement");
@@ -49,41 +70,57 @@ export const getBuyerRequirements = async (req, res) => {
       return ApiResponse.errorResponse(res, 400, "Buyer not authenticated");
     }
 
-    // Fetch requirements with populated fields
+    // Fetch requirements with populated product + sellers
     const requirements = await Requirement.find({ buyerId })
-     .populate({
-        path: 'productId',
-        populate: { path: 'categoryId', select: '-subCategories' } 
+      .populate({
+        path: "productId",
+        populate: { path: "categoryId", select: "-subCategories" },
       })
-      .populate('buyerId')
-      .populate('sellerId')
+      .populate("buyerId")
+      .populate({
+        path: "sellers.sellerId",
+        select: "-password -__v", // exclude sensitive fields
+      })
       .lean();
 
-    // Helper function to clean product data
+    // Helper to clean product data
     const cleanProduct = (prod) => {
       if (!prod) return prod;
       const p = { ...prod };
-      
+
       if (p.userId?._id) p.userId = p.userId._id.toString();
       if (p.subCategoryId?._id) p.subCategoryId = p.subCategoryId._id;
-      
+
       delete p.__v;
       return p;
     };
 
-    // Process requirements with multiProduct enhancement
+    // Manual date formatter
+    const formatDate = (date) => {
+      if (!date) return null;
+      const d = new Date(date);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, "0"); // months are 0-based
+      const day = String(d.getDate()).padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+
+    // Process requirements
     const enhancedRequirements = await Promise.all(
       requirements.map(async (requirement) => {
-        // Structure the response object
         const responseObj = {
           _id: requirement._id,
           status: requirement.status,
-          budgetAmount: requirement.budgetAmount,
           createdAt: requirement.createdAt,
           updatedAt: requirement.updatedAt,
           product: requirement.productId,
           buyer: requirement.buyerId,
-          seller: requirement.sellerId
+          sellers:
+            requirement.sellers?.map((s) => ({
+              seller: s.sellerId, // full populated seller object
+              budgetAmount: s.budgetAmount,
+              date: formatDate(s.createdAt || requirement.createdAt), // use seller's createdAt if available
+            })) || [],
         };
 
         if (!responseObj.product?._id) {
@@ -96,37 +133,37 @@ export const getBuyerRequirements = async (req, res) => {
           .findOne({
             $or: [
               { mainProductId: responseObj.product._id },
-              { subProducts: responseObj.product._id }
-            ]
+              { subProducts: responseObj.product._id },
+            ],
           })
           .populate({
-            path: 'mainProductId',
-            populate: { path: 'categoryId', select: '-subCategories' }
+            path: "mainProductId",
+            populate: { path: "categoryId", select: "-subCategories" },
           })
           .populate({
-            path: 'subProducts',
-            populate: { path: 'categoryId', select: '-subCategories' }
+            path: "subProducts",
+            populate: { path: "categoryId", select: "-subCategories" },
           })
           .lean();
 
         if (multiProduct?.mainProductId) {
           const mainIdStr = multiProduct.mainProductId._id.toString();
           const cleanedMainProduct = cleanProduct(multiProduct.mainProductId);
-          
-          // Filter and clean subProducts (exclude main product)
+
+          // Filter & clean subProducts (exclude main product)
           const subProductsOnly = (multiProduct.subProducts || [])
-            .filter(sub => sub._id.toString() !== mainIdStr)
+            .filter((sub) => sub._id.toString() !== mainIdStr)
             .map(cleanProduct);
-          
+
           responseObj.product = {
             ...cleanedMainProduct,
-            subProducts: subProductsOnly
+            subProducts: subProductsOnly,
           };
         } else {
           // Single product case
           responseObj.product = {
             ...cleanProduct(responseObj.product),
-            subProducts: []
+            subProducts: [],
           };
         }
 
@@ -140,7 +177,6 @@ export const getBuyerRequirements = async (req, res) => {
       "Buyer requirements fetched successfully",
       enhancedRequirements
     );
-
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(
