@@ -42,6 +42,10 @@ const chatSchema = new mongoose.Schema(
       required: true,
     },
     messages: [messageSchema],
+    lastMessage: {
+      type: Object,
+      default: null
+    },
     buyerUnreadCount: {
       type: Number,
       default: 0,
