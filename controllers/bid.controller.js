@@ -61,12 +61,8 @@ export const getAllBids = async (req, res) => {
 
     const bids = await Bid.aggregate([
       {
-        $match: {
-          $or: [
-            { buyerId: new mongoose.Types.ObjectId(userId) },
+        $match: 
             { sellerId: new mongoose.Types.ObjectId(userId) }
-          ]
-        }
       },
       {
         $lookup: {
@@ -300,7 +296,7 @@ export const updateBidUserDetails = async (req, res) => {
   }
 }
 
-export const getLatestThreeBid = async(req,res)=>{
+export const getLatestThreeBidAndDraft = async(req,res)=>{
   try {
     const user =req.user._id
     if(!user){
@@ -315,7 +311,14 @@ export const getLatestThreeBid = async(req,res)=>{
     if (!bids) {
       return ApiResponse.errorResponse(res, 404, "Bid not found");
     }
-    return ApiResponse.successResponse(res, 200, "Bid fetched successfully", bids);
+
+    //  for draft
+    const drafts = await productSchema.find({userId:user,draft:true}).sort({ createdAt: -1 }).limit(3).populate('categoryId').lean()
+    if (!drafts) {
+      return ApiResponse.errorResponse(res, 404, "Draft not found");
+    }
+
+    return ApiResponse.successResponse(res, 200, "Bid fetched successfully", {bids,drafts});
   } catch (error) {
     console.log(error)
     return ApiResponse.errorResponse(res, 400, "Something went wrong while getting bid overview");
