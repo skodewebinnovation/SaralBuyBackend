@@ -131,7 +131,7 @@ const processProductData = (productData, imageUrl, documentUrl, categoryId, subC
     "title", "quantity", "minimumBudget", "productType", "oldProductValue", "productCondition",
     "description", "gst_requirement", "paymentAndDelivery", "color", "selectCategory", "brand",
     "additionalDeliveryAndPackage", "fuelType", "model", "transmission", "productCategory",
-    "gender", "typeOfAccessories", "toolType", "rateAService", "conditionOfProduct"
+    "gender", "typeOfAccessories", "toolType", "rateAService", "conditionOfProduct","budget"
   ];
 
   for (const field of allowedFields) {
@@ -373,9 +373,9 @@ const handleMultipleProducts = async (req, res, { categoryId, subCategoryId, use
     console.log(`Image files: ${imageFiles.length}, Document files: ${documentFiles.length}`);
     
     // Defensive: Check for excessive product count
-    if (parsedProducts.length > 20) {
+    if (parsedProducts.length > 5) {
       console.error("Too many products in request:", parsedProducts.length);
-      return ApiResponse.errorResponse(res, 400, "Too many products in request. Please limit to 20 at a time.");
+      return ApiResponse.errorResponse(res, 400, "Too many products in request. Please limit to 5 at a time.");
     }
     if (imageFiles.length > parsedProducts.length || documentFiles.length > parsedProducts.length) {
       console.warn("File arrays longer than products array. imageFiles:", imageFiles.length, "documentFiles:", documentFiles.length, "products:", parsedProducts.length);
