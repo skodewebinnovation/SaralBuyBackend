@@ -22,6 +22,10 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
   exposedHeaders: ['Set-Cookie']
 }));
+
+app.route('/',(req,res)=>{
+  res.send('Hello World')
+})
 app.use((req, res, next) => {
   logger.info(`${req.method} ${req.originalUrl}`);
   next();
