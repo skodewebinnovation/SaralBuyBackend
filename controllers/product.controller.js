@@ -248,9 +248,12 @@ const handleSingleProduct = async (req, res, { categoryId, subCategoryId, userId
       console.log("[Notification] Creator location:", creatorLocation);
 
       if (creatorLocation) {
-        // 2. Find all users with the same location
-        const usersToNotify = await userSchema.find({ currentLocation: creatorLocation }, '_id');
-        console.log("[Notification] Users to notify:", usersToNotify.map(u => u._id.toString()));
+        // 2. Find all users with the same location except the creator
+        const usersToNotify = await userSchema.find(
+          { currentLocation: creatorLocation, _id: { $ne: userId } },
+          '_id'
+        );
+        console.log("[Notification] Users to notify (excluding creator):", usersToNotify.map(u => u._id.toString()));
 
         const notifications = [];
         for (const user of usersToNotify) {
@@ -459,7 +462,73 @@ const handleMultipleProducts = async (req, res, { categoryId, subCategoryId, use
         if (!updatedCategory) {
           console.error(`Category or SubCategory not found for product ${product._id}`);
         }
-      }
+        }
+    
+        // --- Product Notification Logic (by creator's location) for multiple products ---
+        if (!isDraft && createdProducts.length > 0) {
+          try {
+            // 1. Get creator's location from user collection
+            const creator = await userSchema.findById(userId, 'currentLocation');
+            const creatorLocation = creator?.currentLocation;
+            console.log("[Notification][Multiple] Creator location:", creatorLocation);
+    
+            if (creatorLocation) {
+              // 2. Find all users with the same location except the creator
+              const usersToNotify = await userSchema.find(
+                { currentLocation: creatorLocation, _id: { $ne: userId } },
+                '_id'
+              );
+              console.log("[Notification][Multiple] Users to notify (excluding creator):", usersToNotify.map(u => u._id.toString()));
+    
+              const notifications = [];
+              for (const user of usersToNotify) {
+                for (const product of createdProducts) {
+                  notifications.push({
+                    userId: user._id,
+                    productId: product._id,
+                    title: product.title,
+                    description: product.description,
+                  });
+                }
+              }
+              if (notifications.length > 0) {
+                const result = await productNotificationSchema.insertMany(notifications);
+                console.log("[Notification][Multiple] Notifications inserted into DB:", result.map(n => n._id.toString()));
+    
+                // Real-time product notification via socket
+                if (global.io && global.userSockets && typeof global.userSockets.get === 'function') {
+                  for (const user of usersToNotify) {
+                    const userIdStr = String(user._id);
+                    const recipientSockets = global.userSockets.get(userIdStr);
+                    if (recipientSockets) {
+                      for (const sockId of recipientSockets) {
+                        const recipientSocket = global.io.sockets.sockets.get(sockId);
+                        if (recipientSocket) {
+                          for (const product of createdProducts) {
+                            recipientSocket.emit('product_notification', {
+                              productId: product._id,
+                              title: product.title,
+                              description: product.description
+                            });
+                          }
+                        }
+                      }
+                    }
+                  }
+                } else {
+                  console.warn("[Notification][Multiple] Skipping socket notification: global.io or global.userSockets not available or not a Map.");
+                }
+              } else {
+                console.log("[Notification][Multiple] No notifications to insert (no users matched location).");
+              }
+            } else {
+              console.log("[Notification][Multiple] Creator has no location, skipping notification.");
+            }
+          } catch (err) {
+            console.error("[Notification][Multiple] Error in notification logic:", err);
+          }
+        }
+        // --- End Product Notification Logic ---
     }
     
     return ApiResponse.successResponse(
