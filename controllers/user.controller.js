@@ -244,3 +244,9 @@ export const verifyAadhaar = async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 };
+export const logout = (req,res)=>{
+  const user = req.user;
+  if(!user) return ApiResponse.errorResponse(res, 401, 'User not logged in');
+  res.clearCookie('authToken')
+  res.status(200).json({message:'Logged out'})
+}

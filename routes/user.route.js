@@ -14,6 +14,7 @@ router.get('/profile', auth, userController.getProfile);
 router.post('/update-profile', auth,uploadSingleImage, userController.updateProfile);  
 
 router.post('/address', auth, userController.addAddress);
+router.get('/logout',auth,userController.logout)
 
 router.post('/aadhaar', auth, upload.single('aadhaarImage'), userController.verifyAadhaar);
 
