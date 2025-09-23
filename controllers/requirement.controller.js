@@ -187,3 +187,17 @@ export const getBuyerRequirements = async (req, res) => {
   }
 };
   
+
+export const getRecentRequirements = async(req,res)=>{
+  try {
+    const requirements = await requirementSchema.find().sort({ createdAt: -1 }).limit(3).populate([
+      {path:'productId',select:'title quantity image'},
+      {path:'buyerId',select:"firstName lastName currentLocation"},
+    ]).select('createdAt').lean();
+    return ApiResponse.successResponse(res, 200, "Requirements fetched successfully", requirements);
+  } catch (error) {
+    console.log(error)
+    return ApiResponse.errorResponse(res, 400, "Something went wrong while getting requirements");
+    
+  }
+}

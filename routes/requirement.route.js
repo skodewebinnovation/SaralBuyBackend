@@ -9,5 +9,6 @@ router.post("/create", auth, requirementController.createRequirement);
 
 // Get all requirements for the current buyer
 router.get("/my-requirements", auth, requirementController.getBuyerRequirements);
+router.get('/recent-requirements', requirementController.getRecentRequirements)
 
 export default router;

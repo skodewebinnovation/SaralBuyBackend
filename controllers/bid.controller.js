@@ -4,6 +4,7 @@ import { ApiResponse } from "../helper/ApiReponse.js"
 import { isValidObjectId } from "../helper/isValidId.js"
 import bidSchema from "../schemas/bid.schema.js";
 import productSchema from "../schemas/product.schema.js";
+import requirementSchema from "../schemas/requirement.schema.js";
 // Create a new bid
 export const addBid = async (req, res) => {
   try {
@@ -326,3 +327,4 @@ export const getLatestThreeBidAndDraft = async(req,res)=>{
   }
 
 }
+
