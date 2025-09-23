@@ -3,6 +3,7 @@ global.userSockets = global.userSockets || new Map();
 import { Server as SocketIOServer } from 'socket.io';
 import Chat from '../schemas/chat.schema.js';
 import mongoose from 'mongoose';
+import { approveRequirementOnChatStart } from '../controllers/requirement.controller.js';
 
 export default function chatHandler(server) {
   const io = new SocketIOServer(server, {
@@ -97,6 +98,19 @@ export default function chatHandler(server) {
         sellerId,
         message: `You have joined the chat for product ${productId}`
       });
+
+      // Approve requirement if this is the product owner (buyer) joining chat for the first time
+      approveRequirementOnChatStart({ productId, userId })
+        .then(result => {
+          if (result.updated) {
+            console.log(`Requirement approved for product ${productId} and user ${userId}`);
+          } else {
+            console.log(`Requirement not approved: ${result.reason}`);
+          }
+        })
+        .catch(err => {
+          console.error("Error approving requirement on chat start:", err);
+        });
     });
 
     // Fetch chat history when joining a room
