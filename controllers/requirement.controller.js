@@ -246,7 +246,7 @@ export const getCompletedApprovedRequirements = async (req, res) => {
           seller: deal.sellerId,
           budgetAmount: deal.budgetAmount,
           date: deal.date,
-          finalBudget: deal.finalBudget,
+          finalBudget: deal.finalBudget || 0,
           closedAt: deal.closedAt,
         };
 
