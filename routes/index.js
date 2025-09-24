@@ -4,6 +4,7 @@ import productRouter from "./product.route.js"
 import userRouter from "./user.route.js"
 import bidRouter from "./bid.route.js"
 import requirementRouter from "./requirement.route.js"
+import cartRouter from "./cart.route.js"
 const router = express.Router();
 
 
@@ -14,7 +15,8 @@ const routes =[
     {path:"/product",router:productRouter},
     {path:'/user',router:userRouter},
     {path:'/bid',router:bidRouter},
-    {path:'/requirement',router:requirementRouter}
+    {path:'/requirement',router:requirementRouter},
+    {path:'/cart',router:cartRouter}
 ]
 
 
