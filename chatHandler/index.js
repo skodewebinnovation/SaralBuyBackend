@@ -100,10 +100,10 @@ export default function chatHandler(server) {
       });
 
       // Approve requirement if this is the product owner (buyer) joining chat for the first time
-      approveRequirementOnChatStart({ productId, userId })
+      approveRequirementOnChatStart({ productId, userId, sellerId })
         .then(result => {
           if (result.updated) {
-            console.log(`Requirement approved for product ${productId} and user ${userId}`);
+            console.log(`Requirement approved for product ${productId} and user ${userId} (seller: ${sellerId})`);
           } else {
             console.log(`Requirement not approved: ${result.reason}`);
           }

@@ -4,6 +4,8 @@ import multiProductSchema from "../schemas/multiProduct.schema.js";
 import { ApiResponse } from "../helper/ApiReponse.js";
 import mongoose from "mongoose";
 import requirementSchema from "../schemas/requirement.schema.js";
+import ApprovedRequirement from "../schemas/approvedRequirement.schema.js";
+import ClosedDeal from "../schemas/closedDeal.schema.js";
 
 // Create a requirement (when a seller bids on a product)
 export const createRequirement = async (req, res) => {
@@ -209,19 +211,15 @@ export const getCompletedApprovedRequirements = async (req, res) => {
       return ApiResponse.errorResponse(res, 400, "User not authenticated");
     }
 
-    const requirements = await Requirement.find({
-      dealStatus: "completed",
-      requirementApproved: true,
-      isDelete: false,
-      buyerId: buyerId
-    })
+    // Fetch closed deals for this buyer
+    const closedDeals = await ClosedDeal.find({ buyerId })
       .populate({
         path: "productId",
         populate: { path: "categoryId", select: "-subCategories" }
       })
       .populate("buyerId")
       .populate({
-        path: "sellers.sellerId",
+        path: "sellerId",
         select: "-password -__v"
       })
       .lean();
@@ -236,22 +234,20 @@ export const getCompletedApprovedRequirements = async (req, res) => {
       return p;
     };
 
-    // For each requirement, check if product is part of a multiProduct
-    const enhancedRequirements = await Promise.all(
-      requirements.map(async (requirement) => {
+    // For each closed deal, check if product is part of a multiProduct
+    const enhancedDeals = await Promise.all(
+      closedDeals.map(async (deal) => {
         const responseObj = {
-          _id: requirement._id,
-          status: requirement.status,
-          createdAt: requirement.createdAt,
-          updatedAt: requirement.updatedAt,
-          product: requirement.productId,
-          buyer: requirement.buyerId,
-          sellers:
-            requirement.sellers?.map((s) => ({
-              seller: s.sellerId,
-              budgetAmount: s.budgetAmount,
-              date: s.createdAt || requirement.createdAt,
-            })) || [],
+          _id: deal._id,
+          createdAt: deal.createdAt,
+          updatedAt: deal.updatedAt,
+          product: deal.productId,
+          buyer: deal.buyerId,
+          seller: deal.sellerId,
+          budgetAmount: deal.budgetAmount,
+          date: deal.date,
+          finalBudget: deal.finalBudget,
+          closedAt: deal.closedAt,
         };
 
         if (!responseObj.product?._id) {
@@ -305,34 +301,34 @@ export const getCompletedApprovedRequirements = async (req, res) => {
     return ApiResponse.successResponse(
       res,
       200,
-      "Completed approved requirements fetched successfully",
-      enhancedRequirements
+      "Completed closed deals fetched successfully",
+      enhancedDeals
     );
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(
       res,
       500,
-      err.message || "Failed to fetch completed approved requirements"
+      err.message || "Failed to fetch completed closed deals"
     );
   }
 };
 // Get all requirements with dealStatus "pending", requirementApproved true, isDelete false
 export const getApprovedPendingRequirements = async (req, res) => {
   try {
-    // Find requirements with the specified filters
-    const requirements = await Requirement.find({
-      dealStatus: "pending",
-      requirementApproved: true,
-      isDelete: false
-    })
+    const buyerId = req.user?.userId;
+    if (!buyerId) {
+      return ApiResponse.errorResponse(res, 400, "User not authenticated");
+    }
+
+    // Find approved requirements for this buyer from ApprovedRequirement collection
+    const approvedRequirements = await ApprovedRequirement.find({ buyerId })
       .populate({
         path: "productId",
         populate: { path: "categoryId", select: "-subCategories" }
       })
-      .populate("buyerId")
       .populate({
-        path: "sellers.sellerId",
+        path: "sellerDetails.sellerId",
         select: "-password -__v"
       })
       .lean();
@@ -347,22 +343,20 @@ export const getApprovedPendingRequirements = async (req, res) => {
       return p;
     };
 
-    // For each requirement, check if product is part of a multiProduct
+    // For each approved requirement, check if product is part of a multiProduct
     const enhancedRequirements = await Promise.all(
-      requirements.map(async (requirement) => {
+      approvedRequirements.map(async (ar) => {
         const responseObj = {
-          _id: requirement._id,
-          status: requirement.status,
-          createdAt: requirement.createdAt,
-          updatedAt: requirement.updatedAt,
-          product: requirement.productId,
-          buyer: requirement.buyerId,
-          sellers:
-            requirement.sellers?.map((s) => ({
-              seller: s.sellerId,
-              budgetAmount: s.budgetAmount,
-              date: s.createdAt || requirement.createdAt,
-            })) || [],
+          _id: ar._id,
+          createdAt: ar.createdAt,
+          updatedAt: ar.updatedAt,
+          product: ar.productId,
+          buyer: ar.buyerId,
+          sellerDetails: ar.sellerDetails,
+          productCategory: ar.productCategory,
+          minBudget: ar.minBudget,
+          budget: ar.budget,
+          date: ar.date,
         };
 
         if (!responseObj.product?._id) {
@@ -416,7 +410,7 @@ export const getApprovedPendingRequirements = async (req, res) => {
     return ApiResponse.successResponse(
       res,
       200,
-      "Approved pending requirements fetched successfully",
+      "Approved requirements fetched successfully",
       enhancedRequirements
     );
   } catch (err) {
@@ -424,7 +418,7 @@ export const getApprovedPendingRequirements = async (req, res) => {
     return ApiResponse.errorResponse(
       res,
       500,
-      err.message || "Failed to fetch approved pending requirements"
+      err.message || "Failed to fetch approved requirements"
     );
   }
 };
@@ -432,15 +426,12 @@ export const getApprovedPendingRequirements = async (req, res) => {
 // Close a deal (mark as completed and store deal info)
 export const closeDeal = async (req, res) => {
   try {
-    const { productId, buyerId, sellerId, budgetAmount } = req.body;
+    const { productId, buyerId, sellerId,finalBudget } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(productId) ||
         !mongoose.Types.ObjectId.isValid(buyerId) ||
         !mongoose.Types.ObjectId.isValid(sellerId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid productId, buyerId, or sellerId");
-    }
-    if (typeof budgetAmount !== "number" || isNaN(budgetAmount)) {
-      return ApiResponse.errorResponse(res, 400, "Invalid budgetAmount");
     }
 
     // Find the requirement
@@ -449,30 +440,59 @@ export const closeDeal = async (req, res) => {
       return ApiResponse.errorResponse(res, 404, "Requirement not found");
     }
 
+    // Find the product to get category, minBudget, budget
+    const product = await productSchema.findById(productId).lean();
+    if (!product) {
+      return ApiResponse.errorResponse(res, 404, "Product not found");
+    }
+
     // Mark deal as completed
     requirement.dealStatus = "completed";
-    // Optionally, store closed deal info (could be extended for history)
-    requirement.closedDeal = {
+
+    // Remove the seller from the sellers array
+    if (requirement.sellers && Array.isArray(requirement.sellers)) {
+      requirement.sellers = requirement.sellers.filter(
+        (s) => String(s.sellerId) !== String(sellerId)
+      );
+    }
+
+    // Create ClosedDeal document
+    const closedDealData = {
+      productId,
       buyerId,
       sellerId,
-      productId,
-      budgetAmount,
-      closedAt: new Date()
+      budgetAmount: product.budget,
+      closedAt: new Date(),
+      date: new Date(),
+      categoryId: product.categoryId,
+      yourBudget: product.minimumBudget,
+      finalBudget: finalBudget
     };
+
+    const closedDeal = new ClosedDeal(closedDealData);
+    await closedDeal.save();
 
     await requirement.save();
 
-    return ApiResponse.successResponse(res, 200, "Deal closed successfully", requirement);
+    // Remove the seller from ApprovedRequirement
+    const deletedApproved = await ApprovedRequirement.findOneAndDelete({
+      productId: new mongoose.Types.ObjectId(productId),
+      buyerId: new mongoose.Types.ObjectId(buyerId),
+      "sellerDetails.sellerId": new mongoose.Types.ObjectId(sellerId)
+    });
+    console.log("Deleted ApprovedRequirement:", deletedApproved);
+
+    return ApiResponse.successResponse(res, 200, "Deal closed successfully", closedDeal);
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(res, 500, err.message || "Failed to close deal");
   }
 };
 // Utility to approve requirement when chat starts (for product owner/buyer)
-export const approveRequirementOnChatStart = async ({ productId, userId }) => {
+export const approveRequirementOnChatStart = async ({ productId, userId, sellerId }) => {
   try {
-    if (!productId || !userId) {
-      return { updated: false, reason: "Missing productId or userId" };
+    if (!productId || !userId || !sellerId) {
+      return { updated: false, reason: "Missing productId, userId, or sellerId" };
     }
 
     // Find the product
@@ -487,17 +507,38 @@ export const approveRequirementOnChatStart = async ({ productId, userId }) => {
     }
 
     // Find the requirement for this product and buyer
-    const requirement = await Requirement.findOne({ productId, buyerId: userId });
+    const requirement = await requirementSchema.findOne({ productId, buyerId: userId });
     if (!requirement) {
       return { updated: false, reason: "Requirement not found" };
     }
 
-    if (requirement.requirementApproved) {
-      return { updated: false, reason: "Already approved" };
+    let sellerDetails = null;
+    if (requirement.sellers && requirement.sellers.length > 0) {
+      const foundSeller = requirement.sellers.find(
+        (s) => String(s.sellerId) === String(sellerId)
+      );
+      if (foundSeller) {
+        sellerDetails = {
+          sellerId: foundSeller.sellerId,
+          budgetAmount: foundSeller.budgetAmount
+        };
+      }
     }
 
-    requirement.requirementApproved = true;
-    await requirement.save();
+    // Only save if sellerDetails exists
+    if (sellerDetails) {
+      const approvedRequirement = new ApprovedRequirement({
+        productId,
+        buyerId: userId,
+        sellerDetails,
+        productCategory: product.productCategory || (product.categoryId ? product.categoryId.toString() : ""),
+        minBudget: product.minimumBudget || 0,
+        budget: product.budget || "",
+        date: new Date()
+      });
+      await approvedRequirement.save();
+    }
+
     return { updated: true };
   } catch (err) {
     return { updated: false, reason: err.message || "Error updating requirement" };
