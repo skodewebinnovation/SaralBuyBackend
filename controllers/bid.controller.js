@@ -59,11 +59,16 @@ export const addBid = async (req, res) => {
 export const getAllBids = async (req, res) => {
   try {
     const userId = req.user.userId; // Logged-in user
-
-    const bids = await Bid.aggregate([
+    const { search = "", limit = 10, page = 1, sortBy = "desc" } = req.query;
+    const parsedLimit = Math.max(1, parseInt(limit, 10) || 10);
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+    
+    // Determine sort order for createdAt
+    const sortOrder = sortBy === "asc" ? 1 : -1;
+    // Build aggregation pipeline
+    const pipeline = [
       {
-        $match: 
-            { sellerId: new mongoose.Types.ObjectId(userId) }
+        $match: { sellerId: new mongoose.Types.ObjectId(userId) }
       },
       {
         $lookup: {
@@ -73,7 +78,20 @@ export const getAllBids = async (req, res) => {
           as: "product"
         }
       },
-      { $unwind: "$product" },
+      { $unwind: "$product" }
+    ];
+
+    // Add search by product title if provided
+    if (search && search.trim() !== "") {
+      pipeline.push({
+        $match: {
+          "product.title": { $regex: search, $options: "i" }
+        }
+      });
+    }
+
+    // Continue pipeline
+    pipeline.push(
       {
         $lookup: {
           from: "users",
@@ -119,13 +137,48 @@ export const getAllBids = async (req, res) => {
           }
         }
       }
-    ]);
+    );
+
+    // For total count (before pagination)
+    const countPipeline = [...pipeline];
+    countPipeline.push({ $count: "total" });
+    const countResult = await Bid.aggregate(countPipeline);
+    const total = countResult.length > 0 ? countResult[0].total : 0;
+
+    // Pagination (sort descending by createdAt)
+    pipeline.push({ $sort: { createdAt: sortOrder } });
+    pipeline.push({ $skip: (parsedPage - 1) * parsedLimit });
+    pipeline.push({ $limit: parsedLimit });
+
+    let bids = await Bid.aggregate(pipeline);
+
+    // Update status if bid is older than 24 hours and still active
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+
+    await Promise.all(
+      bids.map(async (bid) => {
+        if (
+          bid.status === "active" &&
+          bid.createdAt &&
+          now - new Date(bid.createdAt).getTime() > twentyFourHours
+        ) {
+          await bidSchema.findByIdAndUpdate(bid._id, { status: "inactive" });
+          bid.status = "inactive";
+        }
+      })
+    );
 
     return ApiResponse.successResponse(
       res,
       200,
       "All bids fetched successfully",
-      bids
+      {
+        total,
+        page: parsedPage,
+        limit: parsedLimit,
+        bids
+      }
     );
   } catch (err) {
     return ApiResponse.errorResponse(
@@ -327,4 +380,179 @@ export const getLatestThreeBidAndDraft = async(req,res)=>{
   }
 
 }
+
+export const getbidDeatilsBYid = async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!isValidObjectId(id)) {
+      return ApiResponse.errorResponse(res, 400, "Invalid bid id");
+    }
+
+    // Pagination parameters for sellers
+    const { limit = 10, page = 1 } = req.query;
+    const parsedLimit = Math.max(1, parseInt(limit, 10) || 10);
+    const parsedPage = Math.max(1, parseInt(page, 10) || 1);
+
+    // Find the bid by id
+    const bid = await bidSchema.findById(id).lean();
+    if (!bid) {
+      return ApiResponse.errorResponse(res, 404, "Bid not found");
+    }
+
+    const productId = bid.productId;
+    if (!productId) {
+      return ApiResponse.errorResponse(res, 404, "Product not found in bid");
+    }
+
+    // Get all bids for this product (all sellers who bid on this product)
+    let allBids = await bidSchema.find({ productId }).populate({
+      path: "sellerId",
+      select: "-password -__v"
+    }).lean();
+
+    // Check and update status if bid is older than 24 hours and still active
+    const now = Date.now();
+    const twentyFourHours = 24 * 60 * 60 * 1000;
+    const bidsToUpdate = [];
+
+    allBids = await Promise.all(
+      allBids.map(async (b) => {
+        if (
+          b.status === "active" &&
+          b.createdAt &&
+          now - new Date(b.createdAt).getTime() > twentyFourHours
+        ) {
+          // Update status in DB
+          await bidSchema.findByIdAndUpdate(b._id, { status: "inactive" });
+          b.status = "inactive";
+          bidsToUpdate.push(b._id);
+        }
+        return b;
+      })
+    );
+
+    // Prepare sellers array: { seller: <sellerObj>, budgetQuation, ... }
+    const sellersAll = allBids.map(b => ({
+      seller: b.sellerId,
+      budgetQuation: b.budgetQuation,
+      availableBrand: b.availableBrand,
+      earliestDeliveryDate: b.earliestDeliveryDate,
+      businessType: b.businessType,
+      createdAt: b.createdAt,
+      updatedAt: b.updatedAt,
+      _id: b._id
+    }));
+
+    // Pagination for sellers
+    const totalSellers = sellersAll.length;
+    const startIdx = (parsedPage - 1) * parsedLimit;
+    const endIdx = startIdx + parsedLimit;
+    const sellers = sellersAll.slice(startIdx, endIdx);
+
+    // Get product details, including multi-product if applicable
+    // Reference: requirement.controller.js getBuyerRequirements
+    // (Assume multiProductSchema is imported as in requirement.controller.js)
+    let product = null;
+    let multiProduct = null;
+    try {
+      // Dynamically import multiProductSchema if not already imported
+      const multiProductSchema = (await import("../schemas/multiProduct.schema.js")).default;
+      // Find if this product is part of a multi-product group
+      multiProduct = await multiProductSchema
+        .findOne({
+          $or: [
+            { mainProductId: productId },
+            { subProducts: productId }
+          ]
+        })
+        .populate({
+          path: "mainProductId",
+          populate: { path: "categoryId", select: "-subCategories" }
+        })
+        .populate({
+          path: "subProducts",
+          populate: { path: "categoryId", select: "-subCategories" }
+        })
+        .lean();
+    } catch (e) {
+      // fallback: ignore multiProduct if import fails
+      multiProduct = null;
+    }
+
+    // Helper to clean product data
+    const cleanProduct = (prod) => {
+      if (!prod) return prod;
+      const p = { ...prod };
+      if (p.userId?._id) p.userId = p.userId._id.toString();
+      if (p.subCategoryId?._id) p.subCategoryId = p.subCategoryId._id;
+      delete p.__v;
+      return p;
+    };
+
+    // Get the product itself
+    const prodDoc = await productSchema.findById(productId)
+      .populate({ path: "categoryId", select: "-subCategories" })
+      .lean();
+
+    if (multiProduct?.mainProductId) {
+      const mainIdStr = multiProduct.mainProductId._id.toString();
+      const cleanedMainProduct = cleanProduct(multiProduct.mainProductId);
+      // Filter & clean subProducts (exclude main product)
+      const subProductsOnly = (multiProduct.subProducts || [])
+        .filter((sub) => sub._id.toString() !== mainIdStr)
+        .map(cleanProduct);
+
+      product = {
+        ...cleanedMainProduct,
+        subProducts: subProductsOnly,
+      };
+    } else {
+      // Single product case
+      product = {
+        ...cleanProduct(prodDoc),
+        subProducts: [],
+      };
+    }
+
+    // If the main bid is active and older than 24 hours, update its status
+    let mainBidStatus = bid.status;
+    if (
+      bid.status === "active" &&
+      bid.createdAt &&
+      now - new Date(bid.createdAt).getTime() > twentyFourHours
+    ) {
+      await bidSchema.findByIdAndUpdate(bid._id, { status: "inactive" });
+      mainBidStatus = "inactive";
+    }
+
+    // Compose response
+    const responseObj = {
+      _id: bid._id,
+      product,
+      sellers,
+      totalSellers,
+      page: parsedPage,
+      limit: parsedLimit,
+      createdAt: bid.createdAt,
+      updatedAt: bid.updatedAt,
+      status: mainBidStatus
+    };
+
+    return ApiResponse.successResponse(
+      res,
+      200,
+      "Bid details with all sellers fetched successfully",
+      responseObj
+    );
+  } catch (err) {
+    console.error(err);
+    return ApiResponse.errorResponse(
+      res,
+      500,
+      err.message || "Failed to fetch bid details"
+    );
+  }
+};
+
+
 

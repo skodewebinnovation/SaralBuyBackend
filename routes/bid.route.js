@@ -11,4 +11,5 @@ router.delete("/delete-bid/:id", auth, bidController.deleteBid);
 router.get('/bid-overview/:id',auth,bidController.bidOverViewbyId)
 router.put('/update-bid-user-dets/:id',auth,bidController.updateBidUserDetails)
 router.get('/get-three-latest-bid-and-draft', auth, bidController.getLatestThreeBidAndDraft) // fetching 3 bids and draft only
+router.get('/bid-details/:id', auth, bidController.getbidDeatilsBYid);
 export default router;
