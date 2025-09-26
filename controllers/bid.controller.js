@@ -5,6 +5,7 @@ import { isValidObjectId } from "../helper/isValidId.js"
 import bidSchema from "../schemas/bid.schema.js";
 import productSchema from "../schemas/product.schema.js";
 import requirementSchema from "../schemas/requirement.schema.js";
+import userSchema from "../schemas/user.schema.js";
 // Create a new bid
 export const addBid = async (req, res) => {
   try {
@@ -514,6 +515,30 @@ export const getbidDeatilsBYid = async (req, res) => {
       };
     }
 
+    // Fetch and attach buyer details if userId exists
+    if (product && product.userId) {
+      try {
+        // If userId is an object, get its string value
+        const buyerId = typeof product.userId === "object" && product.userId._id
+          ? product.userId._id
+          : product.userId;
+        const buyer = await userSchema.findById(buyerId).select("-password -__v").lean();
+        if (buyer) {
+          product.buyer = {
+            _id: buyer._id,
+            firstName: buyer.firstName,
+            lastName: buyer.lastName,
+            email: buyer.email,
+            phone: buyer.phone,
+            address: buyer.address,
+            // Add more fields as needed
+          };
+        }
+      } catch (e) {
+        // If buyer fetch fails, do nothing
+      }
+    }
+
     // If the main bid is active and older than 24 hours, update its status
     let mainBidStatus = bid.status;
     if (
@@ -526,9 +551,17 @@ export const getbidDeatilsBYid = async (req, res) => {
     }
 
     // Compose response
+    // Move buyer details to top-level if present
+    let buyer = null;
+    if (product && product.buyer) {
+      buyer = product.buyer;
+      delete product.buyer;
+    }
+
     const responseObj = {
       _id: bid._id,
       product,
+      buyer,
       sellers,
       totalSellers,
       page: parsedPage,
