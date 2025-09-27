@@ -1561,3 +1561,78 @@ export const markProductNotificationSeen = async (req, res) => {
     return ApiResponse.errorResponse(res, 500, error.message || "Failed to mark notification as seen");
   }
 };
+
+export const getHomeProducts = async (req, res) => {
+  try {
+    // Step 1: Get top 2 categories by product count
+    const topCategories = await productSchema.aggregate([
+      { $match: { draft: false } },
+      {
+        $group: {
+          _id: '$categoryId',
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { count: -1 } },
+      { $limit: 2 }
+    ]);
+
+    const topCategoryIds = topCategories.map(c => c._id);
+
+    // Step 2: Fetch up to 3 products per category with populated categoryInfo and userInfo
+    const topProductsPerCategory = await productSchema.aggregate([
+      {
+        $match: {
+          categoryId: { $in: topCategoryIds },
+          draft: false
+        }
+      },
+      // Populate category info
+      {
+        $lookup: {
+          from: 'categories',
+          localField: 'categoryId',
+          foreignField: '_id',
+          as: 'categoryInfo'
+        }
+      },
+      { $unwind: '$categoryInfo' },
+
+      // Populate user info
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'userId',
+          foreignField: '_id',
+          as: 'userInfo'
+        }
+      },
+      { $unwind: '$userInfo' },
+
+      // Group products by category
+      {
+        $group: {
+          _id: '$categoryId',
+          categoryName: { $first: '$categoryInfo.categoryName' },
+          products: { $push: '$$ROOT' }
+        }
+      },
+      // Slice products to limit 3 per category
+      {
+        $project: {
+          _id: 1,
+          categoryName: 1,
+          products: { $slice: ['$products', 3] }
+        }
+      }
+    ]);
+
+    // Send response
+    return ApiResponse.successResponse(res, 200, 'Products fetched successfully', topProductsPerCategory);
+
+  } catch (error) {
+    console.error(error);
+    return ApiResponse.errorResponse(res, 500, error.message || 'Failed to fetch products');
+  }
+};
+

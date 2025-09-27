@@ -1,5 +1,5 @@
 import express from 'express';
-import { addProduct, getProducts, updateProduct, deleteProduct, searchProductsController, getProductByName, getProductById, getDraftProducts, getMultiProduct, updateDraftStatus, getAllDraftProducts,getDraftProductById, getUnseenProductNotifications, markProductNotificationSeen } from '../controllers/product.controller.js';
+import { addProduct, getProducts, updateProduct, deleteProduct, searchProductsController, getProductByName, getProductById, getDraftProducts, getMultiProduct, updateDraftStatus, getAllDraftProducts,getDraftProductById, getUnseenProductNotifications, markProductNotificationSeen,getHomeProducts } from '../controllers/product.controller.js';
 import uploadSingleImage from '../middleware/uploadMiddleware.js';
 import { uploadProductFiles } from '../middleware/productUploadMiddleware.js';
 import auth from '../middleware/auth.js';
@@ -16,6 +16,7 @@ router.get('/get-product-by-id/:productId', getProductById);
 router.get('/get-draft-products', auth, getAllDraftProducts);
 router.get('/get-draft-product/:productId', auth, getDraftProductById);
 router.patch("/updatedraft/:isMultiple", auth,uploadProductFiles, updateDraftStatus);
+router.get('/get-home-products',getHomeProducts);
 
 
 router.get('/notifications/unseen', auth, getUnseenProductNotifications);
