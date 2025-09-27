@@ -23,6 +23,11 @@ export const addBid = async (req, res) => {
         "budgetQuation is required"
       );
     }
+      const existingBid = await Bid.findOne({ sellerId, buyerId, productId });
+    if (existingBid) {
+      return ApiResponse.errorResponse(res, 400, "You have already placed a bid for this product");
+    }
+
 
     const bid = await Bid.create({
       sellerId,
