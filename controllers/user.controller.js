@@ -247,6 +247,11 @@ export const verifyAadhaar = async (req, res) => {
 export const logout = (req,res)=>{
   const user = req.user;
   if(!user) return ApiResponse.errorResponse(res, 401, 'User not logged in');
-  res.clearCookie('authToken')
+   res.clearCookie('authToken', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    path: '/',
+  });
   res.status(200).json({message:'Logged out'})
 }
