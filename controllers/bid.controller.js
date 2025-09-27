@@ -535,7 +535,7 @@ export const getbidDeatilsBYid = async (req, res) => {
             lastName: buyer.lastName,
             email: buyer.email,
             phone: buyer.phone,
-            currentLocation:buyer.currentLocation ,
+            currentLocation:buyer.currentLocation || buyer.address ,
             // Add more fields as needed
           };
         }
