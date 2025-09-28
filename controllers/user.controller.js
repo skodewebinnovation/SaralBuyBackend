@@ -67,7 +67,8 @@ export const verifyOtp = async (req, res) => {
      const token = jwt.sign(payload,process.env.JWT_SECRET,{expiresIn:'7d'})
     res.cookie('authToken', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      // secure: process.env.NODE_ENV === 'production',
+      secure:'none',
       sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000, 
       path: '/',
@@ -249,7 +250,8 @@ export const logout = (req,res)=>{
   if(!user) return ApiResponse.errorResponse(res, 401, 'User not logged in');
    res.clearCookie('authToken', {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
+    // secure: process.env.NODE_ENV === 'production',
+    secure:'none',
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
     path: '/',
   });
