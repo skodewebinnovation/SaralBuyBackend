@@ -69,7 +69,7 @@ export const verifyOtp = async (req, res) => {
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
       // sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      sameSite:'none',
+      sameSite:'None',
       maxAge: 7 * 24 * 60 * 60 * 1000, 
       path: '/',
     });
@@ -252,7 +252,7 @@ export const logout = (req,res)=>{
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     // sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    sameSite:'none',
+    sameSite:'None',
     path: '/',
   });
   res.status(200).json({message:'Logged out'})
