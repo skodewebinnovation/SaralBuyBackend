@@ -592,5 +592,23 @@ export const getbidDeatilsBYid = async (req, res) => {
   }
 };
 
+export const getBidByProductId =async(req,res)=>{
+const {productId} = req.params;
+try {
+  const getBidDoc = await bidSchema.exists({
+productId});
+if (!getBidDoc) {
+  return ApiResponse.errorResponse(
+    res,
+    404,
+    "Bid not found"
+  );
+}
+return ApiResponse.successResponse(res, 200, "Bid fetched successfully", getBidDoc);
+} catch (error) {
+  return ApiResponse.errorResponse(res, 400, error.message);
+  
+}
+}
 
 
