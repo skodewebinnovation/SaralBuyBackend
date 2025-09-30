@@ -65,14 +65,20 @@ export const verifyOtp = async (req, res) => {
 
     const payload = { _id: user._id, phone: user.phone };
      const token = jwt.sign(payload,process.env.JWT_SECRET,{expiresIn:'7d'})
-    res.cookie('authToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      // sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-      sameSite:'None',
-      maxAge: 7 * 24 * 60 * 60 * 1000, 
-      path: '/',
-    });
+    // res.cookie('authToken', token, {
+    //   httpOnly: true,
+    //   secure: process.env.NODE_ENV === 'production',
+    //   // sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+    //   sameSite:'None',
+    //   maxAge: 7 * 24 * 60 * 60 * 1000, 
+    //   path: '/',
+    // });
+    res.cookie('authToken',token,{
+       sameSite: "none",
+    httpOnly: true,
+    secure: true,
+    path:'/'
+    })
 
     return ApiResponse.successResponse(res, 200, "Otp verified successfully", {
       token,
@@ -249,11 +255,10 @@ export const logout = (req,res)=>{
   const user = req.user;
   if(!user) return ApiResponse.errorResponse(res, 401, 'User not logged in');
    res.clearCookie('authToken', {
+    sameSite: "none",
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    // sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
-    sameSite:'None',
-    path: '/',
+    secure: true,
+    path:'/'
   });
   res.status(200).json({message:'Logged out'})
 }

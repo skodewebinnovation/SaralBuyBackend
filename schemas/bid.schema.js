@@ -10,7 +10,11 @@ const bidSchema = new mongoose.Schema(
     availableBrand: { type: String },
     earliestDeliveryDate: { type: Date },
     businessType:{type:String,enum:['individual','business']},
-    // bidCount:Number
+    businessDets:{
+    company_name:String,
+    company_reg_num:String,
+    gst_num:String
+    }
   },
   { timestamps: true }
 );

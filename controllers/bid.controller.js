@@ -12,7 +12,7 @@ export const addBid = async (req, res) => {
     const { budgetQuation, status, availableBrand, earliestDeliveryDate, businessType } = req.body;
     const { buyerId, productId } = req.params;
     const sellerId = req.user.userId;
-
+    console.log(req.body,2123 )
     if (!isValidObjectId(buyerId) || !isValidObjectId(productId)) {
       return ApiResponse.errorResponse(res, 400, "Invalid sellerId or productId");
     }
@@ -37,7 +37,8 @@ export const addBid = async (req, res) => {
       status: status || "active",
       availableBrand,
       earliestDeliveryDate,
-      businessType
+      businessType,
+      ...(businessType === "business" && {businessDets:req.body.businessDets})
     });
 
     // Increment totalBidCount for the product
