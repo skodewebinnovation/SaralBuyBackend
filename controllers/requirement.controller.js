@@ -271,13 +271,18 @@ export const getRecentRequirements = async(req,res)=>{
 // Get all requirements with dealStatus "completed", requirementApproved true, isDelete false, and buyerId = logged-in user
 export const getCompletedApprovedRequirements = async (req, res) => {
   try {
-    const buyerId = req.user?.userId;
-    if (!buyerId) {
+    const userId = req.user?.userId;
+    if (!userId) {
       return ApiResponse.errorResponse(res, 400, "User not authenticated");
     }
 
-    // Fetch closed deals for this buyer
-    const closedDeals = await ClosedDeal.find({ buyerId })
+    // Fetch closed deals where user is either buyer OR seller
+    const closedDeals = await ClosedDeal.find({
+      $or: [
+        { sellerId: userId },
+        { buyerId: userId }
+      ]
+    })
       .populate({
         path: "productId",
         populate: { path: "categoryId", select: "-subCategories" }
@@ -381,13 +386,13 @@ export const getCompletedApprovedRequirements = async (req, res) => {
 // Get all requirements with dealStatus "pending", requirementApproved true, isDelete false
 export const getApprovedPendingRequirements = async (req, res) => {
   try {
-    const buyerId = req.user?.userId;
-    if (!buyerId) {
+    const sellerId = req.user?.userId;
+    if (!sellerId) {
       return ApiResponse.errorResponse(res, 400, "User not authenticated");
     }
 
-    // Find approved requirements for this buyer from ApprovedRequirement collection
-    const approvedRequirements = await ApprovedRequirement.find({ buyerId })
+    // Find approved requirements for this seller from ApprovedRequirement collection
+    const approvedRequirements = await ApprovedRequirement.find({ "sellerDetails.sellerId": sellerId })
       .populate({
         path: "productId",
         populate: { path: "categoryId", select: "-subCategories" }
@@ -512,14 +517,14 @@ export const closeDeal = async (req, res) => {
     }
 
     // Mark deal as completed
-    requirement.dealStatus = "completed";
+    // requirement.dealStatus = "completed";
 
     // Remove the seller from the sellers array
-    if (requirement.sellers && Array.isArray(requirement.sellers)) {
-      requirement.sellers = requirement.sellers.filter(
-        (s) => String(s.sellerId) !== String(sellerId)
-      );
-    }
+    // if (requirement.sellers && Array.isArray(requirement.sellers)) {
+    //   requirement.sellers = requirement.sellers.filter(
+    //     (s) => String(s.sellerId) !== String(sellerId)
+    //   );
+    // }
 
     // Create ClosedDeal document
     const closedDealData = {
@@ -537,15 +542,21 @@ export const closeDeal = async (req, res) => {
     const closedDeal = new ClosedDeal(closedDealData);
     await closedDeal.save();
 
-    await requirement.save();
-
-    // Remove the seller from ApprovedRequirement
-    const deletedApproved = await ApprovedRequirement.findOneAndDelete({
+    // Delete the ApprovedRequirement document for this deal
+    const deletedApprovedReq = await ApprovedRequirement.findOneAndDelete({
       productId: new mongoose.Types.ObjectId(productId),
       buyerId: new mongoose.Types.ObjectId(buyerId),
       "sellerDetails.sellerId": new mongoose.Types.ObjectId(sellerId)
     });
-    console.log("Deleted ApprovedRequirement:", deletedApproved);
+    
+    // Log deletion result for debugging
+    if (deletedApprovedReq) {
+      console.log("Approved requirement deleted successfully:", deletedApprovedReq._id);
+    } else {
+      console.log("No approved requirement found to delete for this combination");
+    }
+
+    // await requirement.save();
 
     return ApiResponse.successResponse(res, 200, "Deal closed successfully", closedDeal);
   } catch (err) {
