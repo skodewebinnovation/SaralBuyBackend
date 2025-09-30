@@ -131,7 +131,8 @@ const processProductData = (productData, imageUrl, documentUrl, categoryId, subC
     "title", "quantity", "minimumBudget", "productType", "oldProductValue", "productCondition",
     "description", "gst_requirement", "paymentAndDelivery", "color", "selectCategory", "brand",
     "additionalDeliveryAndPackage", "fuelType", "model", "transmission", "productCategory",
-    "gender", "typeOfAccessories", "toolType", "rateAService", "conditionOfProduct","budget"
+    "gender", "typeOfAccessories", "toolType", "rateAService", "conditionOfProduct", "budget",
+    "bidActiveDuration"
   ];
 
   for (const field of allowedFields) {
@@ -372,6 +373,20 @@ const handleMultipleProducts = async (req, res, { categoryId, subCategoryId, use
     const createdProducts = [];
     const imageFiles = req.files?.image || [];
     const documentFiles = req.files?.document || [];
+
+    // Ensure bidActiveDuration is set for each product if provided at top-level
+    const globalBidActiveDuration = req.body.bidActiveDuration;
+    if (globalBidActiveDuration) {
+      for (let i = 0; i < parsedProducts.length; i++) {
+        if (
+          !Object.prototype.hasOwnProperty.call(parsedProducts[i], "bidActiveDuration") ||
+          parsedProducts[i].bidActiveDuration === undefined ||
+          parsedProducts[i].bidActiveDuration === null
+        ) {
+          parsedProducts[i].bidActiveDuration = globalBidActiveDuration;
+        }
+      }
+    }
     
     console.log(`Image files: ${imageFiles.length}, Document files: ${documentFiles.length}`);
     
