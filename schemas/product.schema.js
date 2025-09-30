@@ -52,7 +52,8 @@ const productSchema = new mongoose.Schema({
   },
 // Track total number of bids placed on this product
   totalBidCount: { type: Number, default: 0 },
-  budget:String
+  budget:String, // this is not using
+  bidActiveDuration: { type: String },
 },{
   timestamps:true
 });
