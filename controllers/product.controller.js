@@ -404,8 +404,9 @@ const handleMultipleProducts = async (req, res, { categoryId, subCategoryId, use
       console.log(`Processing product ${i + 1}:`, productData.title);
       
       // For non-draft products, validate required fields
+      // || !productData.quantity
       if (!isDraft) {
-        if (!productData.title?.trim() || !productData.quantity || !productData.description?.trim()) {
+        if (!productData.title?.trim()  || !productData.description?.trim()) {
           // Clean up any already created products
           for (const product of createdProducts) {
             await productSchema.findByIdAndDelete(product._id);
