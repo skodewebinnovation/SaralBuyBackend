@@ -7,6 +7,7 @@ import userSchema from "../schemas/user.schema.js";
 import {isValidObjectId}  from "../helper/isValidId.js"
 import multiProductSchema from "../schemas/multiProduct.schema.js";
 import productNotificationSchema from "../schemas/productNotification.schema.js";
+import requirementSchema from "../schemas/requirement.schema.js";
 
 
 const mergeDraftProducts = (allDrafts) => {
@@ -239,6 +240,20 @@ const handleSingleProduct = async (req, res, { categoryId, subCategoryId, userId
   // ✅ Save product
   const newProduct = new productSchema(processedData);
   const savedProduct = await newProduct.save();
+
+  if (!draft) {
+    try {
+      const newRequirement = new requirementSchema({
+        productId: savedProduct._id,
+        buyerId: userId,
+        sellers: []
+      });
+      await newRequirement.save();
+      console.log("[Requirement] Created requirement for product:", savedProduct._id);
+    } catch (err) {
+      console.error("[Requirement] Error creating requirement:", err);
+    }
+  }
 
   // --- Product Notification Logic (by creator's location) ---
   if (!draft) {
@@ -478,7 +493,20 @@ const handleMultipleProducts = async (req, res, { categoryId, subCategoryId, use
         if (!updatedCategory) {
           console.error(`Category or SubCategory not found for product ${product._id}`);
         }
-        }
+      }
+      
+      try {
+        const requirementDocs = createdProducts.map(product => ({
+          productId: product._id,
+          buyerId: userId,
+          sellers: []
+        }));
+        
+        await requirementSchema.insertMany(requirementDocs);
+        console.log("[Requirement][Multiple] Created requirements for", createdProducts.length, "products");
+      } catch (err) {
+        console.error("[Requirement][Multiple] Error creating requirements:", err);
+      }
     
         // --- Product Notification Logic (by creator's location) for multiple products ---
         if (!isDraft && createdProducts.length > 0) {
@@ -584,7 +612,6 @@ export const addProduct = async (req, res) => {
 
     // Handle multiple products
     if (isMultiple == "true") {
-      console.log('shadbaaz chgutitya')
       return await handleMultipleProducts(req, res, {
         categoryId,
         subCategoryId,

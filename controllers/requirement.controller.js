@@ -172,72 +172,82 @@ export const getBuyerRequirements = async (req, res) => {
         return responseObj;
       })
     );
-    const ownedProducts = await productSchema
-      .find({ userId: buyerId })
-      .populate({ path: "categoryId", select: "-subCategories" })
-      .lean();
+    // const ownedProducts = await productSchema
+    //   .find({ userId: buyerId })
+    //   .populate({ path: "categoryId", select: "-subCategories" })
+    //   .lean();
 
-    const requirementProductIds = new Set(
-      requirements.map((req) => req.productId?._id?.toString() || (req.productId ? req.productId.toString() : ""))
-    );
+    // const requirementProductIds = new Set(
+    //   requirements.map((req) => req.productId?._id?.toString() || (req.productId ? req.productId.toString() : ""))
+    // );
 
-    const additionalRequirements = await Promise.all(
-      ownedProducts
-        .filter((prod) => !requirementProductIds.has(prod._id.toString()))
-        .map(async (prod) => {
-          const multiProduct = await multiProductSchema
-            .findOne({
-              $or: [
-                { mainProductId: prod._id },
-                { subProducts: prod._id },
-              ],
-            })
-            .populate({
-              path: "mainProductId",
-              populate: { path: "categoryId", select: "-subCategories" },
-            })
-            .populate({
-              path: "subProducts",
-              populate: { path: "categoryId", select: "-subCategories" },
-            })
-            .lean();
+    // const additionalRequirements = await Promise.all(
+    //   ownedProducts
+    //     .filter((prod) => !requirementProductIds.has(prod._id.toString()))
+    //     .map(async (prod) => {
+    //       const multiProduct = await multiProductSchema
+    //         .findOne({
+    //           $or: [
+    //             { mainProductId: prod._id },
+    //             { subProducts: prod._id },
+    //           ],
+    //         })
+    //         .populate({
+    //           path: "mainProductId",
+    //           populate: { path: "categoryId", select: "-subCategories" },
+    //         })
+    //         .populate({
+    //           path: "subProducts",
+    //           populate: { path: "categoryId", select: "-subCategories" },
+    //         })
+    //         .lean();
 
-          let productObj;
-          if (multiProduct?.mainProductId) {
-            const mainIdStr = multiProduct.mainProductId._id.toString();
-            const cleanedMainProduct = cleanProduct(multiProduct.mainProductId);
+    //       let productObj;
+    //       if (multiProduct?.mainProductId) {
+    //         const mainIdStr = multiProduct.mainProductId._id.toString();
+    //         const cleanedMainProduct = cleanProduct(multiProduct.mainProductId);
 
-            const subProductsOnly = (multiProduct.subProducts || [])
-              .filter((sub) => sub._id.toString() !== mainIdStr)
-              .map(cleanProduct);
+    //         const subProductsOnly = (multiProduct.subProducts || [])
+    //           .filter((sub) => sub._id.toString() !== mainIdStr)
+    //           .map(cleanProduct);
 
-            productObj = {
-              ...cleanedMainProduct,
-              subProducts: subProductsOnly,
-            };
-          } else {
-            // Single product case
-            productObj = {
-              ...cleanProduct(prod),
-              subProducts: [],
-            };
-          }
+    //         productObj = {
+    //           ...cleanedMainProduct,
+    //           subProducts: subProductsOnly,
+    //         };
+    //       } else {
+    //         // Single product case
+    //         productObj = {
+    //           ...cleanProduct(prod),
+    //           subProducts: [],
+    //         };
+    //       }
 
-          return {
-            _id: prod._id, // Use product _id as unique id for this pseudo-requirement
-            status: "owned", // or any custom status to indicate it's not a real requirement
-            createdAt: prod.createdAt,
-            updatedAt: prod.updatedAt,
-            product: productObj,
-            buyer: buyerId,
-            sellers: [],
-          };
-        })
-    );
+    //       return {
+    //         _id: prod._id, // Use product _id as unique id for this pseudo-requirement
+    //         status: "owned", // or any custom status to indicate it's not a real requirement
+    //         createdAt: prod.createdAt,
+    //         updatedAt: prod.updatedAt,
+    //         product: productObj,
+    //         buyer: buyerId,
+    //         sellers: [],
+    //       };
+    //     })
+    // );
 
     // Merge and return
-    const allRequirements = [...enhancedRequirements, ...additionalRequirements];
-
+    let allRequirements = [...enhancedRequirements];
+    
+    // Remove duplicate products (by product._id), keeping the first occurrence
+    const seenProductIds = new Set();
+    allRequirements = allRequirements.filter(req => {
+      const prodId = req.product && req.product._id ? req.product._id.toString() : null;
+      if (!prodId) return true; // keep if no product id
+      if (seenProductIds.has(prodId)) return false;
+      seenProductIds.add(prodId);
+      return true;
+    });
+    
     return ApiResponse.successResponse(
       res,
       200,
