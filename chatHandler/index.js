@@ -10,7 +10,7 @@ import { approveRequirementOnChatStart } from '../controllers/requirement.contro
 export default function chatHandler(server) {
   const io = new SocketIOServer(server, {
     cors: {
-      origin: ['http://localhost:5173','https://kaleidoscopic-pika-c2b489.netlify.app'],
+      origin: ['http://localhost:5173', 'https://kaleidoscopic-pika-c2b489.netlify.app'],
       credentials: true,
       methods: ['GET', 'POST'],
       allowedHeaders: ['Content-Type', 'Authorization'],
@@ -20,13 +20,42 @@ export default function chatHandler(server) {
     pingTimeout: 60000,
     pingInterval: 25000
   });
-  global.io = io; 
+
+  global.io = io;
   const userSockets = global.userSockets;
+
+  // Helper function to generate consistent room IDs
+  const generateRoomId = (productId, buyerId, sellerId) => {
+    const sortedIds = [buyerId, sellerId].sort();
+    return `product_${productId}_buyer_${sortedIds[0]}_seller_${sortedIds[1]}`;
+  };
+
+  // Helper function to determine buyerId
+  const determineBuyerId = (data, socket) => {
+    const { userId, userType, buyerId } = data;
+    if (userType === 'buyer') {
+      return userId;
+    }
+    return buyerId || socket.buyerId || userId;
+  };
+
+  // Helper function to send notification to users not in room
+  const sendNotificationToOfflineUser = (notifyUserId, roomId, payload) => {
+    const recipientSockets = userSockets.get(String(notifyUserId));
+    if (recipientSockets) {
+      for (const sockId of recipientSockets) {
+        const recipientSocket = io.sockets.sockets.get(sockId);
+        if (recipientSocket && !recipientSocket.rooms.has(roomId)) {
+          recipientSocket.emit('new_message_notification', payload);
+        }
+      }
+    }
+  };
 
   io.on('connection', (socket) => {
     console.log(`Socket connected: ${socket.id}`);
 
-    // Listen for user identification (should be sent from frontend after connect)
+    // Listen for user identification
     socket.on('identify', ({ userId }) => {
       if (!userId) return;
       if (!userSockets.has(userId)) {
@@ -34,47 +63,46 @@ export default function chatHandler(server) {
       }
       userSockets.get(userId).add(socket.id);
       socket.userId = userId;
-    });
-
-    // Clean up on disconnect
-    socket.on('disconnect', () => {
-      if (socket.userId && userSockets.has(socket.userId)) {
-        userSockets.get(socket.userId).delete(socket.id);
-        if (userSockets.get(socket.userId).size === 0) {
-          userSockets.delete(socket.userId);
-        }
-      }
+      console.log(`User identified: ${userId} with socket ${socket.id}`);
     });
 
     // Handle joining a chat room
-    socket.on('join_room', (data) => {
+    socket.on('join_room', async (data) => {
       const { userId, productId, sellerId, userType } = data;
-      
+
       // Validate required fields
       if (!userId || !productId || !sellerId || !userType) {
         socket.emit('error', { message: 'Missing required fields: userId, productId, sellerId, or userType' });
         return;
       }
-      
-      // FIXED: Determine buyerId based on userType
-      let buyerId;
-      if (userType === 'buyer') {
-        buyerId = userId; // Current user is buyer
-      } else {
-        // userType === 'seller', so we need the buyerId from somewhere
-        // For seller joining, we expect buyerId to be passed or derived
-        // Since seller joins with sellerId === userId, we need buyerId from the data
-        buyerId = data.buyerId || userId; // fallback to userId if buyerId not provided
+
+      // Determine buyerId based on userType
+      const buyerId = determineBuyerId(data, socket);
+
+      // Prevent same user from being both buyer and seller
+      if (String(buyerId) === String(sellerId)) {
+        socket.emit('error', { message: 'Cannot create chat with yourself. Buyer and seller must be different users.' });
+        console.log(`Rejected chat creation: buyerId ${buyerId} and sellerId ${sellerId} are the same`);
+        return;
       }
-      
-      // Create a consistent room ID - ALWAYS use the same order
-      // Sort buyerId and sellerId to ensure consistency
-      const sortedIds = [buyerId, sellerId].sort();
-      const roomId = `product_${productId}_buyer_${sortedIds[0]}_seller_${sortedIds[1]}`;
-      
+
+      // Leave previous room if exists
+      if (socket.roomId) {
+        socket.leave(socket.roomId);
+        socket.to(socket.roomId).emit('user_left', {
+          userId: socket.userId,
+          userType: socket.userType,
+          message: `${socket.userType} has left the chat`
+        });
+        console.log(`User ${socket.userId} left previous room ${socket.roomId}`);
+      }
+
+      // Create consistent room ID
+      const roomId = generateRoomId(productId, buyerId, sellerId);
+
       // Join the room
       socket.join(roomId);
-      
+
       // Store user information in socket session
       socket.userId = userId;
       socket.productId = productId;
@@ -82,17 +110,17 @@ export default function chatHandler(server) {
       socket.buyerId = buyerId;
       socket.userType = userType;
       socket.roomId = roomId;
-      
+
       console.log(`User ${userId} (${userType}) joined room ${roomId} for product ${productId}`);
       console.log(`Room participants - Buyer: ${buyerId}, Seller: ${sellerId}`);
-      
+
       // Notify others in the room that a user has joined
       socket.to(roomId).emit('user_joined', {
         userId,
         userType,
         message: `${userType} has joined the chat`
       });
-      
+
       // Confirm room joining to the user
       socket.emit('room_joined', {
         roomId,
@@ -100,6 +128,31 @@ export default function chatHandler(server) {
         sellerId,
         message: `You have joined the chat for product ${productId}`
       });
+
+      // Reset unread count for the joining user and send chat history
+      try {
+        const updateField = userType === 'buyer' ? { buyerUnreadCount: 0 } : { sellerUnreadCount: 0 };
+        const chat = await Chat.findOneAndUpdate(
+          { roomId },
+          { $set: updateField },
+          { new: true }
+        ).lean();
+
+        const messages = chat?.messages || [];
+        const lastMessage = chat?.lastMessage || (messages.length > 0 ? messages[messages.length - 1] : null);
+
+        socket.emit('chat_history', {
+          roomId,
+          messages,
+          lastMessage,
+          messageCount: messages.length,
+          buyerUnreadCount: chat?.buyerUnreadCount || 0,
+          sellerUnreadCount: chat?.sellerUnreadCount || 0
+        });
+      } catch (err) {
+        console.error('Error fetching chat history on join:', err);
+        socket.emit('error', { message: 'Failed to fetch chat history', error: err.message });
+      }
 
       // Approve requirement if this is the product owner (buyer) joining chat for the first time
       approveRequirementOnChatStart({ productId, userId, sellerId })
@@ -118,91 +171,28 @@ export default function chatHandler(server) {
     // Fetch chat history when joining a room
     socket.on('get_chat_history', async (data) => {
       const { productId, sellerId, buyerId } = data;
+
       if (!productId || !sellerId || !buyerId) {
         socket.emit('error', { message: 'Missing required fields for fetching chat history' });
         return;
       }
-      const sortedIds = [buyerId, sellerId].sort();
-      const roomId = `product_${productId}_buyer_${sortedIds[0]}_seller_${sortedIds[1]}`;
+
+      // Prevent fetching chat history if buyer and seller are the same
+      if (String(buyerId) === String(sellerId)) {
+        socket.emit('error', { message: 'Cannot fetch chat history. Buyer and seller cannot be the same user.' });
+        console.log(`Rejected chat history fetch: buyerId ${buyerId} and sellerId ${sellerId} are the same`);
+        return;
+      }
+
+      const roomId = generateRoomId(productId, buyerId, sellerId);
+
       try {
         const chat = await Chat.findOne({ roomId }).lean();
         const messages = chat?.messages || [];
         const lastMessage = chat?.lastMessage || (messages.length > 0 ? messages[messages.length - 1] : null);
-        console.log(lastMessage,"lastMessage")
-        socket.emit('chat_history', {
-          roomId,
-          messages,
-          lastMessage,
-          messageCount: messages.length,
-          buyerUnreadCount: chat?.buyerUnreadCount || 0,
-          sellerUnreadCount: chat?.sellerUnreadCount || 0
-        });
-      } catch (err) {
-        socket.emit('error', { message: 'Failed to fetch chat history', error: err.message });
-      }
-    });
 
-    // When joining a room, send chat history to the user
-    socket.on('join_room', async (data) => {
-      const { userId, productId, sellerId, userType } = data;
-  
-      // Validate required fields
-      if (!userId || !productId || !sellerId || !userType) {
-        socket.emit('error', { message: 'Missing required fields: userId, productId, sellerId, or userType' });
-        return;
-      }
-  
-      // Determine buyerId based on userType
-      let buyerId;
-      if (userType === 'buyer') {
-        buyerId = userId; // Current user is buyer
-      } else {
-        buyerId = data.buyerId || userId; // fallback to userId if buyerId not provided
-      }
-  
-      // Create a consistent room ID - ALWAYS use the same order
-      const sortedIds = [buyerId, sellerId].sort();
-      const roomId = `product_${productId}_buyer_${sortedIds[0]}_seller_${sortedIds[1]}`;
-  
-      // Join the room
-      socket.join(roomId);
-  
-      // Store user information in socket session
-      socket.userId = userId;
-      socket.productId = productId;
-      socket.sellerId = sellerId;
-      socket.buyerId = buyerId;
-      socket.userType = userType;
-      socket.roomId = roomId;
-  
-      console.log(`User ${userId} (${userType}) joined room ${roomId} for product ${productId}`);
-      console.log(`Room participants - Buyer: ${buyerId}, Seller: ${sellerId}`);
-  
-      // Notify others in the room that a user has joined
-      socket.to(roomId).emit('user_joined', {
-        userId,
-        userType,
-        message: `${userType} has joined the chat`
-      });
-  
-      // Confirm room joining to the user
-      socket.emit('room_joined', {
-        roomId,
-        buyerId,
-        sellerId,
-        message: `You have joined the chat for product ${productId}`
-      });
-  
-      // Reset unread count for the joining user and send chat history
-      try {
-        const updateField = userType === 'buyer' ? { buyerUnreadCount: 0 } : { sellerUnreadCount: 0 };
-        const chat = await Chat.findOneAndUpdate(
-          { roomId },
-          { $set: updateField },
-          { new: true }
-        ).lean();
-        const messages = chat?.messages || [];
-        const lastMessage = chat?.lastMessage || (messages.length > 0 ? messages[messages.length - 1] : null);
+        console.log(lastMessage, "lastMessage");
+
         socket.emit('chat_history', {
           roomId,
           messages,
@@ -212,6 +202,7 @@ export default function chatHandler(server) {
           sellerUnreadCount: chat?.sellerUnreadCount || 0
         });
       } catch (err) {
+        console.error('Error fetching chat history:', err);
         socket.emit('error', { message: 'Failed to fetch chat history', error: err.message });
       }
     });
@@ -219,29 +210,30 @@ export default function chatHandler(server) {
     // Handle sending messages
     socket.on('send_message', async (data) => {
       const { productId, sellerId, message, senderId, senderType, buyerId } = data;
-  
+
       // Validate required fields
       if (!productId || !sellerId || !message || !senderId || !senderType) {
         socket.emit('error', { message: 'Missing required fields for sending message' });
         return;
       }
-  
-      // Use consistent room ID logic
-      let finalBuyerId;
-      if (senderType === 'buyer') {
-        finalBuyerId = senderId;
-      } else {
-        finalBuyerId = buyerId || socket.buyerId;
-      }
-  
+
+      // Determine final buyerId
+      const finalBuyerId = determineBuyerId({ userId: senderId, userType: senderType, buyerId }, socket);
+
       if (!finalBuyerId) {
         socket.emit('error', { message: 'Cannot determine buyerId for room' });
         return;
       }
-  
-      const sortedIds = [finalBuyerId, sellerId].sort();
-      const roomId = `product_${productId}_buyer_${sortedIds[0]}_seller_${sortedIds[1]}`;
-  
+
+      // Prevent sending messages if buyer and seller are the same
+      if (String(finalBuyerId) === String(sellerId)) {
+        socket.emit('error', { message: 'Cannot send message to yourself. Buyer and seller must be different users.' });
+        console.log(`Rejected message: buyerId ${finalBuyerId} and sellerId ${sellerId} are the same`);
+        return;
+      }
+
+      const roomId = generateRoomId(productId, finalBuyerId, sellerId);
+
       // Save message to DB and update unread count
       try {
         const msgObj = {
@@ -250,6 +242,7 @@ export default function chatHandler(server) {
           message,
           timestamp: new Date()
         };
+
         // Determine which unread count to increment
         const unreadField = senderType === 'buyer' ? 'sellerUnreadCount' : 'buyerUnreadCount';
         const update = {
@@ -263,13 +256,14 @@ export default function chatHandler(server) {
           $set: { lastMessage: msgObj },
           $inc: { [unreadField]: 1 }
         };
+
         const chat = await Chat.findOneAndUpdate(
           { roomId },
           update,
           { upsert: true, new: true }
         ).lean();
 
-        // Broadcast the message to everyone in the room (including sender for confirmation)
+        // Broadcast the message to everyone in the room
         io.to(roomId).emit('receive_message', {
           productId,
           message,
@@ -290,42 +284,19 @@ export default function chatHandler(server) {
         });
 
         // --- Notification logic for users not in the room ---
-        // Determine recipient userId (opposite of sender)
-        let notifyUserId;
-        if (senderType === 'buyer') {
-          notifyUserId = sellerId;
-        } else {
-          notifyUserId = finalBuyerId;
-        }
-
-        // Get all sockets for the recipient
-        const recipientSockets = userSockets.get(String(notifyUserId));
-        if (recipientSockets) {
-          // Check if any of the recipient's sockets are NOT in the room
-          for (const sockId of recipientSockets) {
-            const recipientSocket = io.sockets.sockets.get(sockId);
-            if (recipientSocket && !recipientSocket.rooms.has(roomId)) {
-              recipientSocket.emit('new_message_notification', {
-                roomId,
-                lastMessage: chat?.lastMessage || msgObj,
-                productId,
-                sellerId,
-                buyerId: finalBuyerId
-              });
-            }
-          }
-        }
-
-        // Emit last message update for sidebar/chat list
-        io.to(roomId).emit('chat_last_message_update', {
+        const notifyUserId = senderType === 'buyer' ? sellerId : finalBuyerId;
+        sendNotificationToOfflineUser(notifyUserId, roomId, {
           roomId,
-          lastMessage: chat?.lastMessage || msgObj
+          lastMessage: chat?.lastMessage || msgObj,
+          productId,
+          sellerId,
+          buyerId: finalBuyerId
         });
-  
+
         console.log(`Message sent in room ${roomId} by ${senderId} (${senderType}): "${message}"`);
       } catch (err) {
+        console.error('Error saving message:', err);
         socket.emit('error', { message: 'Failed to save message', error: err.message });
-        return;
       }
     });
 
@@ -333,14 +304,15 @@ export default function chatHandler(server) {
     socket.on('typing_start', (data) => {
       const { productId, userId, sellerId, buyerId } = data;
       if (!productId || !userId || !sellerId) return;
-      
-      // Determine final buyerId
-      const finalBuyerId = buyerId || (socket.userType === 'buyer' ? userId : socket.buyerId);
+
+      const finalBuyerId = determineBuyerId({ userId, userType: socket.userType, buyerId }, socket);
       if (!finalBuyerId) return;
-      
-      const sortedIds = [finalBuyerId, sellerId].sort();
-      const roomId = `product_${productId}_buyer_${sortedIds[0]}_seller_${sortedIds[1]}`;
-      
+
+      // Prevent typing indicator if buyer and seller are the same
+      if (String(finalBuyerId) === String(sellerId)) return;
+
+      const roomId = generateRoomId(productId, finalBuyerId, sellerId);
+
       socket.to(roomId).emit('user_typing', {
         userId,
         isTyping: true
@@ -350,91 +322,95 @@ export default function chatHandler(server) {
     socket.on('typing_stop', (data) => {
       const { productId, userId, sellerId, buyerId } = data;
       if (!productId || !userId || !sellerId) return;
-      
-      // Determine final buyerId
-      const finalBuyerId = buyerId || (socket.userType === 'buyer' ? userId : socket.buyerId);
+
+      const finalBuyerId = determineBuyerId({ userId, userType: socket.userType, buyerId }, socket);
       if (!finalBuyerId) return;
-      
-      const sortedIds = [finalBuyerId, sellerId].sort();
-      const roomId = `product_${productId}_buyer_${sortedIds[0]}_seller_${sortedIds[1]}`;
-      
+
+      // Prevent typing indicator if buyer and seller are the same
+      if (String(finalBuyerId) === String(sellerId)) return;
+
+      const roomId = generateRoomId(productId, finalBuyerId, sellerId);
+
+      socket.to(roomId).emit('user_typing', {
+        userId,
+        isTyping: true
+      });
+    });
+
+    socket.on('typing_stop', (data) => {
+      const { productId, userId, sellerId, buyerId } = data;
+      if (!productId || !userId || !sellerId) return;
+
+      const finalBuyerId = determineBuyerId({ userId, userType: socket.userType, buyerId }, socket);
+      if (!finalBuyerId) return;
+
+      const roomId = generateRoomId(productId, finalBuyerId, sellerId);
+
       socket.to(roomId).emit('user_typing', {
         userId,
         isTyping: false
       });
     });
 
-    // Handle user disconnects
-    socket.on('disconnect', (reason) => {
-      console.log(`Socket disconnected: ${socket.id} (${reason})`);
-      
-      // If the socket was in a room, notify others that the user left
-      if (socket.roomId) {
-        socket.to(socket.roomId).emit('user_left', {
-          userId: socket.userId,
-          userType: socket.userType,
-          message: `${socket.userType} has left the chat`
-        });
-      
-          // Real-time product notification event
-          socket.on('send_product_notification', (data) => {
-            const { userId, productId, title, description } = data;
-            if (!userId || !productId || !title || !description) return;
-            const recipientSockets = userSockets.get(String(userId));
-            if (recipientSockets) {
-              for (const sockId of recipientSockets) {
-                const recipientSocket = io.sockets.sockets.get(sockId);
-                if (recipientSocket) {
-                  recipientSocket.emit('product_notification', {
-                    productId,
-                    title,
-                    description
-                  });
-                }
-              }
-            }
-          });
+    // Real-time product notification event
+    socket.on('send_product_notification', (data) => {
+      const { userId, productId, title, description } = data;
+      if (!userId || !productId || !title || !description) return;
+
+      const recipientSockets = userSockets.get(String(userId));
+      if (recipientSockets) {
+        for (const sockId of recipientSockets) {
+          const recipientSocket = io.sockets.sockets.get(sockId);
+          if (recipientSocket) {
+            recipientSocket.emit('product_notification', {
+              productId,
+              title,
+              description
+            });
+          }
+        }
       }
     });
-  });
 
-    // Get all recent chats for a user (for chat list with chat history)
-    io.on('connection', (socket) => {
-      socket.on('get_recent_chats', async (data) => {
-        const { userId } = data;
-        if (!userId) {
-          socket.emit('error', { message: 'Missing userId for fetching recent chats' });
-          return;
-        }
-        try {
-          // Find all chats where the user is either buyer or seller
-          const chats = await Chat.find({
-            $or: [
-              { buyerId: new mongoose.Types.ObjectId(userId) },
-              { sellerId: new mongoose.Types.ObjectId(userId) }
-            ]
-          }).lean();
+    // Get all recent chats for a user
+    socket.on('get_recent_chats', async (data) => {
+      const { userId } = data;
+      if (!userId) {
+        socket.emit('error', { message: 'Missing userId for fetching recent chats' });
+        return;
+      }
 
-          // Gather all unique productIds, buyerIds, sellerIds
-          const productIds = [...new Set(chats.map(chat => String(chat.productId)))];
-          const buyerIds = [...new Set(chats.map(chat => String(chat.buyerId)))];
-          const sellerIds = [...new Set(chats.map(chat => String(chat.sellerId)))];
+      try {
+        // Find all chats where the user is either buyer or seller
+        const chats = await Chat.find({
+          $or: [
+            { buyerId: new mongoose.Types.ObjectId(userId) },
+            { sellerId: new mongoose.Types.ObjectId(userId) }
+          ]
+        }).lean();
 
-          // Fetch all products and users in one go
-          const [products, users] = await Promise.all([
-            Product.find({ _id: { $in: productIds } }).lean(),
-            User.find({ _id: { $in: [...buyerIds, ...sellerIds] } }).lean()
-          ]);
+        // Gather all unique productIds, buyerIds, sellerIds
+        const productIds = [...new Set(chats.map(chat => String(chat.productId)))];
+        const buyerIds = [...new Set(chats.map(chat => String(chat.buyerId)))];
+        const sellerIds = [...new Set(chats.map(chat => String(chat.sellerId)))];
 
-          // Create lookup maps for quick access
-          const productMap = {};
-          products.forEach(prod => { productMap[String(prod._id)] = prod; });
+        // Fetch all products and users in one go
+        const [products, users] = await Promise.all([
+          Product.find({ _id: { $in: productIds } }).lean(),
+          User.find({ _id: { $in: [...buyerIds, ...sellerIds] } }).lean()
+        ]);
 
-          const userMap = {};
-          users.forEach(u => { userMap[String(u._id)] = u; });
+        // Create lookup maps for quick access
+        const productMap = {};
+        products.forEach(prod => { productMap[String(prod._id)] = prod; });
 
-          // Map to desired response format with populated details and userType
-          const recentChats = chats.map(chat => {
+        const userMap = {};
+        users.forEach(u => { userMap[String(u._id)] = u; });
+
+        // Map to desired response format with populated details and userType
+        const recentChats = chats
+          .filter(chat => String(chat.buyerId) !== String(chat.sellerId)) // Exclude chats where buyer and seller are the same user
+          .map(chat => {
             let userType = null;
             if (String(chat.buyerId) === String(userId)) {
               userType = 'buyer';
@@ -455,12 +431,71 @@ export default function chatHandler(server) {
             };
           });
 
-          socket.emit('recent_chats', { chats: recentChats });
-        } catch (err) {
-          socket.emit('error', { message: 'Failed to fetch recent chats', error: err.message });
-        }
+        socket.emit('recent_chats', { chats: recentChats });
+      } catch (err) {
+        console.error('Error fetching recent chats:', err);
+        socket.emit('error', { message: 'Failed to fetch recent chats', error: err.message });
+      }
+    });
+
+    // Handle clearing/leaving active room
+    socket.on('leave_room', (data) => {
+      const { roomId } = data;
+      const targetRoomId = roomId || socket.roomId;
+
+      if (!targetRoomId) {
+        socket.emit('error', { message: 'No active room to leave' });
+        return;
+      }
+
+      // Leave the room
+      socket.leave(targetRoomId);
+
+      // Notify others in the room
+      socket.to(targetRoomId).emit('user_left', {
+        userId: socket.userId,
+        userType: socket.userType,
+        message: `${socket.userType} has left the chat`
+      });
+
+      console.log(`User ${socket.userId} left room ${targetRoomId}`);
+
+      // Clear room data from socket
+      socket.roomId = null;
+      socket.productId = null;
+      socket.sellerId = null;
+      socket.buyerId = null;
+      socket.userType = null;
+
+      // Confirm to the user
+      socket.emit('room_left', {
+        roomId: targetRoomId,
+        message: 'You have left the chat room'
       });
     });
+
+    // Handle user disconnects
+    socket.on('disconnect', (reason) => {
+      console.log(`Socket disconnected: ${socket.id} (${reason})`);
+
+      // Clean up user socket mapping
+      if (socket.userId && userSockets.has(socket.userId)) {
+        userSockets.get(socket.userId).delete(socket.id);
+        if (userSockets.get(socket.userId).size === 0) {
+          userSockets.delete(socket.userId);
+        }
+      }
+
+      // If the socket was in a room, notify others that the user left
+      if (socket.roomId) {
+        socket.to(socket.roomId).emit('user_left', {
+          userId: socket.userId,
+          userType: socket.userType,
+          message: `${socket.userType} has left the chat`
+        });
+      }
+    });
+  });
 
   return io;
 }
