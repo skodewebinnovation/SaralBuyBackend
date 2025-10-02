@@ -230,23 +230,21 @@ export const getUserCart = async (req, res) => {
 export const removeCart = async (req, res) => {
   try {
     const { cartId, productId } = req.params;
-    let removeCartId =null;
+    console.log(cartId, productId, "removeCart");
 
     const cart = await Cart.findById(cartId);
     if (!cart) {
       return ApiResponse.errorResponse(res, 404, "Cart not found");
     }
 
+
     cart.cartItems = cart.cartItems.filter(item => {
-      return !item.productIds.some(id =>{
-        removeCartId =id;
-        return id.toString() === productId.toString()
-      });
+      return !item.productIds.some(id => id.toString() === productId.toString());
     });
 
     await cart.save();
 
-    return ApiResponse.successResponse(res, 200, "Cart item removed successfully",{productId:removeCartId});
+    return ApiResponse.successResponse(res, 200, "Cart item removed successfully");
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(res, 500, err.message || "Failed to remove cart item");
