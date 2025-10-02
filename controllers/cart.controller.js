@@ -71,6 +71,7 @@ export const addToCart = async (req, res) => {
 
     cart.cartItems.push({ productIds: productIdsToAdd });
     await cart.save();
+    
 
     return ApiResponse.successResponse(res, 201, "Product(s) added to cart", cart);
   } catch (err) {
@@ -210,10 +211,46 @@ export const getUserCart = async (req, res) => {
         }
       })
     );
+      const cartResponse = {
+      _id: cart._id,
+      userId: cart.userId,
+      cartItems: enhancedCartItems,
+      createdAt: cart.createdAt,
+      updatedAt: cart.updatedAt
+    };
 
-    return ApiResponse.successResponse(res, 200, "Cart fetched successfully", enhancedCartItems);
+
+    return ApiResponse.successResponse(res, 200, "Cart fetched successfully", cartResponse);
   } catch (err) {
     console.error(err);
     return ApiResponse.errorResponse(res, 500, err.message || "Failed to fetch cart");
   }
 };
+
+export const removeCart = async (req, res) => {
+  try {
+    const { cartId, productId } = req.params;
+    let removeCartId =null;
+
+    const cart = await Cart.findById(cartId);
+    if (!cart) {
+      return ApiResponse.errorResponse(res, 404, "Cart not found");
+    }
+
+    cart.cartItems = cart.cartItems.filter(item => {
+      return !item.productIds.some(id =>{
+        removeCartId =id;
+        return id.toString() === productId.toString()
+      });
+    });
+
+    await cart.save();
+
+    return ApiResponse.successResponse(res, 200, "Cart item removed successfully",{productId:removeCartId});
+  } catch (err) {
+    console.error(err);
+    return ApiResponse.errorResponse(res, 500, err.message || "Failed to remove cart item");
+  }
+};
+
+

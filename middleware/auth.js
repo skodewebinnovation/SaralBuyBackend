@@ -3,8 +3,7 @@ import { ApiResponse } from '../helper/ApiReponse.js';
 
 const auth = (req, res, next) => {
 
-  const token =req.cookies?.authToken 
-
+  const token =req.cookies?.authToken;
 
   if (!token) return ApiResponse.errorResponse(res, 401, 'Token not found');
 
