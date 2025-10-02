@@ -587,9 +587,9 @@ export const approveRequirementOnChatStart = async ({ productId, userId, sellerI
       return { updated: false, reason: "Product not found" };
     }
 
-    // Check if the user is the product owner (buyer)
+    // Only the buyer (product owner) can approve
     if (String(product.userId) !== String(userId)) {
-      return { updated: false, reason: "User is not the product owner" };
+      return { updated: false, reason: "User is not the product owner (buyer)" };
     }
 
     // Find the requirement for this product and buyer
@@ -611,8 +611,18 @@ export const approveRequirementOnChatStart = async ({ productId, userId, sellerI
       }
     }
 
-    // Only save if sellerDetails exists
+    // Only save if sellerDetails exists and not already approved
     if (sellerDetails) {
+      // Check if already approved
+      const alreadyApproved = await ApprovedRequirement.findOne({
+        productId,
+        buyerId: userId,
+        "sellerDetails.sellerId": sellerDetails.sellerId
+      });
+      if (alreadyApproved) {
+        return { updated: false, reason: "Already approved" };
+      }
+
       const approvedRequirement = new ApprovedRequirement({
         productId,
         buyerId: userId,
@@ -623,9 +633,10 @@ export const approveRequirementOnChatStart = async ({ productId, userId, sellerI
         date: new Date()
       });
       await approvedRequirement.save();
+      return { updated: true };
     }
 
-    return { updated: true };
+    return { updated: false, reason: "Seller details not found in requirement" };
   } catch (err) {
     return { updated: false, reason: err.message || "Error updating requirement" };
   }

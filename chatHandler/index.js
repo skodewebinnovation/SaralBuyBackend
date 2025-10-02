@@ -3,6 +3,8 @@ global.userSockets = global.userSockets || new Map();
 import { Server as SocketIOServer } from 'socket.io';
 import Chat from '../schemas/chat.schema.js';
 import mongoose from 'mongoose';
+import Product from '../schemas/product.schema.js';
+import User from '../schemas/user.schema.js';
 import { approveRequirementOnChatStart } from '../controllers/requirement.controller.js';
 
 export default function chatHandler(server) {
@@ -395,6 +397,70 @@ export default function chatHandler(server) {
       }
     });
   });
+
+    // Get all recent chats for a user (for chat list with chat history)
+    io.on('connection', (socket) => {
+      socket.on('get_recent_chats', async (data) => {
+        const { userId } = data;
+        if (!userId) {
+          socket.emit('error', { message: 'Missing userId for fetching recent chats' });
+          return;
+        }
+        try {
+          // Find all chats where the user is either buyer or seller
+          const chats = await Chat.find({
+            $or: [
+              { buyerId: new mongoose.Types.ObjectId(userId) },
+              { sellerId: new mongoose.Types.ObjectId(userId) }
+            ]
+          }).lean();
+
+          // Gather all unique productIds, buyerIds, sellerIds
+          const productIds = [...new Set(chats.map(chat => String(chat.productId)))];
+          const buyerIds = [...new Set(chats.map(chat => String(chat.buyerId)))];
+          const sellerIds = [...new Set(chats.map(chat => String(chat.sellerId)))];
+
+          // Fetch all products and users in one go
+          const [products, users] = await Promise.all([
+            Product.find({ _id: { $in: productIds } }).lean(),
+            User.find({ _id: { $in: [...buyerIds, ...sellerIds] } }).lean()
+          ]);
+
+          // Create lookup maps for quick access
+          const productMap = {};
+          products.forEach(prod => { productMap[String(prod._id)] = prod; });
+
+          const userMap = {};
+          users.forEach(u => { userMap[String(u._id)] = u; });
+
+          // Map to desired response format with populated details and userType
+          const recentChats = chats.map(chat => {
+            let userType = null;
+            if (String(chat.buyerId) === String(userId)) {
+              userType = 'buyer';
+            } else if (String(chat.sellerId) === String(userId)) {
+              userType = 'seller';
+            }
+            return {
+              roomId: chat.roomId,
+              product: productMap[String(chat.productId)] || null,
+              buyer: userMap[String(chat.buyerId)] || null,
+              seller: userMap[String(chat.sellerId)] || null,
+              messages: chat.messages || [],
+              lastMessage: chat.lastMessage || (chat.messages?.length > 0 ? chat.messages[chat.messages.length - 1] : null),
+              messageCount: chat.messages?.length || 0,
+              buyerUnreadCount: chat.buyerUnreadCount || 0,
+              sellerUnreadCount: chat.sellerUnreadCount || 0,
+              userType
+            };
+          });
+
+          socket.emit('recent_chats', { chats: recentChats });
+        } catch (err) {
+          socket.emit('error', { message: 'Failed to fetch recent chats', error: err.message });
+        }
+      });
+    });
 
   return io;
 }
